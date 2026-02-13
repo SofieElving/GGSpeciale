@@ -6,7 +6,6 @@ code
     -> baseline_enviroments
       -> wrappers...
       ->
-    
     -> baseline_runs
       -> CartPole
       -> MountainCar
@@ -14,7 +13,5 @@ code
       -> Acrobot
       -> Swimmer
       -> Reacher 
-    
     run_baselines.py
-    
   -> SPID...
