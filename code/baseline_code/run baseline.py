@@ -7,7 +7,7 @@ from sb3_contrib import TRPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.evaluation import evaluate_policy
 
-from enviroment_wrappers import make_continuous_cartpole
+from code.baseline_code.baseline_enviroments.cartpole_env import make_continuous_cartpole
 
 
 methods = {
