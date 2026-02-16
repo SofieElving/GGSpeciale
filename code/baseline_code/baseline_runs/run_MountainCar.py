@@ -110,4 +110,4 @@ for method_name, spec in methods.items():
 
 results = pd.DataFrame(results)
 print(results)
-#model.save(f"models/{method_name}_{ENV_NAME}")
+model.save(f"baseline_models/{method_name}_{ENV_NAME}")
