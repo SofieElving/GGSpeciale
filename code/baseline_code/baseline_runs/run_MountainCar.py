@@ -5,11 +5,17 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.evaluation import evaluate_policy
 import sys
 import os
+from pathlib import Path
 
 sys.path.append(os.path.abspath(".."))
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+print(PROJECT_ROOT)
+
 from baseline_enviroments.MountainCar import make_continuous_mountaincar
 
+model_saves_folder = PROJECT_ROOT / "baseline_models" / "mountaincar"
+model_saves_folder.mkdir(parents=True, exist_ok=True)
 
 methods = {
     "PPO": {
@@ -74,7 +80,7 @@ methods = {
 ENV_FACTORY = make_continuous_mountaincar
 ENV_NAME = "MountainCar"  
 
-TOTAL_TIMESTEPS = 25_000
+TOTAL_TIMESTEPS = 500_000
 results = []
 
 for method_name, spec in methods.items():
@@ -88,6 +94,9 @@ for method_name, spec in methods.items():
 
     eval_env = make_vec_env(ENV_FACTORY, n_envs=1)
     mean_reward, std_reward = evaluate_policy(model, eval_env, n_eval_episodes=10)
+
+    model_path = model_saves_folder / f"{method_name}_mountaincar"
+    model.save(str(model_path))
 
     print(
         "==============\n"
@@ -108,6 +117,6 @@ for method_name, spec in methods.items():
     train_env.close()
     eval_env.close()
 
+
 results = pd.DataFrame(results)
 print(results)
-model.save(f"baseline_models/{method_name}_{ENV_NAME}")
