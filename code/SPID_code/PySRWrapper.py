@@ -12,14 +12,21 @@ class PySRWrapper:
     def __init__(self, sr: PySRRegressor):
         self.sr = sr
 
-    def predict(
-            self,
-            observation: np.ndarray,
-            state: Optional[Tuple[np.ndarray, ...]] = None,
-            episode_start: Optional[np.ndarray] = None,
-            deterministic: bool = False,
-    ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
-        return self.sr.predict(observation), None
+    # def predict(
+    #         self,
+    #         observation: np.ndarray,
+    #         state: Optional[Tuple[np.ndarray, ...]] = None,
+    #         episode_start: Optional[np.ndarray] = None,
+    #         deterministic: bool = False,
+    # ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
+    #     return self.sr.predict(observation), None
+
+    
+    def predict(self, obs, state=None, episode_start=None, deterministic=True):
+        a = self.sr.predict(obs)  # could be (n_envs,) or scalar
+        a = np.asarray(a, dtype=np.float32).reshape(-1, 1)  # (n_envs, 1)
+        a = np.clip(a, -1.0, 1.0)
+        return a, state
 
     @classmethod
     def load(cls, path: str):

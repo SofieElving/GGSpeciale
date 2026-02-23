@@ -7,7 +7,12 @@ from stable_baselines3 import DQN, PPO
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.env_util import make_vec_env
 from pysr import PySRRegressor 
-from PySRWrapper import PySRWrapper
+from SPID_code.PySRWrapper import PySRWrapper
+
+
+from baseline_code.baseline_enviroments.cartpole_env import make_continuous_cartpole
+
+
 
 from tqdm import tqdm
 
@@ -24,7 +29,7 @@ def train_spid(teacher_path,
                environment, 
                n_iter, 
                total_timesteps, 
-               verbose=False):
+               verbose=1):
     
     #print(f"Training SPID on {env_name}")
 
@@ -46,7 +51,7 @@ def train_spid(teacher_path,
                                      beta)
 
         # TODO: implement PySR here 
-        srr = PySRRegressor()
+        srr = PySRRegressor(verbosity=0)
         x = np.array([traj[0] for traj in dataset])
         y = np.array([traj[1] for traj in dataset])
         weight = np.array([traj[2] for traj in dataset])
@@ -59,9 +64,15 @@ def train_spid(teacher_path,
 
 
         # TODO: implement policy evaluation - for this, make a wrapper 
-        env = make_vec_env(environment)
+        if isinstance(teacher_model, PPO):
+            env = make_vec_env(make_continuous_cartpole, n_envs=1)
+        else: 
+            env = make_vec_env(environment)
+        
+        env = make_vec_env(make_continuous_cartpole, n_envs=1)
+
         mean_reward, std_reward = evaluate_policy(PySRWrapper(policy), env, n_eval_episodes=100)
-        if args.verbose == 2:
+        if verbose == 2:
             print(f"Policy score: {mean_reward:0.4f} +/- {std_reward:0.4f}")
         rewards.append(mean_reward)
 
@@ -79,9 +90,13 @@ def load_teacher_env(teacher_path, teacher_model, environment):
 
     # Load correct environment for model 
     # Load model settings - with arguments. 
-
-    env = make_vec_env(environment)
-    teacher = teacher_model.load(teacher_path, env=env)
+    if isinstance(teacher_model, PPO):
+        env = make_vec_env(make_continuous_cartpole, n_envs=1)
+    else: 
+        env = make_vec_env(environment)
+    
+    env = make_vec_env(make_continuous_cartpole, n_envs=1)
+    teacher = teacher_model.load(teacher_path)
 
     return env, teacher
 
@@ -103,13 +118,13 @@ def sample_trajectory(teacher_path, teacher_model, environment, total_timesteps,
         active_policy = [policy, teacher][np.random.binomial(1, beta)]
 
         # TODO: replace with PySR classifier 
-        if isinstance(active_policy, DecisionTreeClassifier):
+        if isinstance(active_policy, PySRRegressor):
             action = active_policy.predict(obs)
         else:
             action, _states = active_policy.predict(obs, deterministic=True)
         
         # TODO: replace with PySR classifier 
-        if not isinstance(active_policy, DecisionTreeClassifier):
+        if not isinstance(active_policy, PySRRegressor):
             oracle_action = action
         else:
             oracle_action = teacher.predict(obs, deterministic=True)[0]
@@ -151,16 +166,18 @@ def get_loss(env, model: BaseAlgorithm, obs):
         # For policy gradient methods we use the max entropy formulation
         # to get Q(s, a) \approx log pi(a|s)
         # See Ziebart et al. 2008
-        assert isinstance(env.action_space,
-                          gym.spaces.Discrete), "Only discrete action spaces supported for loss function"
-        possible_actions = np.arange(env.action_space.n)
+        # assert isinstance(env.action_space,
+        #                   gym.spaces.Discrete), "Only discrete action spaces supported for loss function"
+        # possible_actions = np.arange(env.action_space.n)
 
-        obs = torch.from_numpy(obs)
+        possible_actions = np.arange(2)
+
+        obs = torch.from_numpy(obs).to("cuda")
         log_probs = []
         for action in possible_actions:
-            action = torch.from_numpy(np.array([action])).repeat(obs.shape[0])
+            action = torch.from_numpy(np.array([action])).repeat(obs.shape[0]).to("cuda")
             _, log_prob, _ = model.policy.evaluate_actions(obs, action)
-            log_probs.append(log_prob.detach().numpy().flatten())
+            log_probs.append(log_prob.cpu().detach().numpy().flatten())
 
         log_probs = np.array(log_probs).T
         return log_probs.max(axis=1) - log_probs.min(axis=1)
