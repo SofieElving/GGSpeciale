@@ -1,20 +1,26 @@
 # https://gymnasium.farama.org/environments/classic_control/cart_pole/
-import sys
 import os
+import gymnasium as gym
+import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from stable_baselines3 import PPO, DDPG, SAC, TD3
 from sb3_contrib import TRPO
-
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.evaluation import evaluate_policy
 
 from baseline_code.baseline_enviroments.cartpole_env import make_continuous_cartpole
 from pathlib import Path
+import sys
 
-model_saves_folder = Path(r"code\baseline_code\baseline_models\cartpole")
+ROOT = Path(__file__).resolve().parents[3]  # -> C:\GitHub\GGSpeciale
+sys.path.append(str(ROOT))
+print("ROOT:", ROOT)
+
+model_saves_folder = ROOT / "code" / "baseline_code" / "baseline_models" / "cartpole"
 model_saves_folder.mkdir(parents=True, exist_ok=True)
+print("Save dir:", model_saves_folder)
 
 algos = ["PPO", "DDPG", "SAC", "TD3", "TRPO"]
 
@@ -106,8 +112,17 @@ for methodName, spec in methods.items():
         deterministic=True
     )
 
+    # model_path = model_saves_folder / f"{methodName}_cartpole"
+    # model.save(str(model_path))
+
     model_path = model_saves_folder / f"{methodName}_cartpole"
+    saved_file = model_path.with_suffix(".zip")
+
     model.save(str(model_path))
+
+    print("Saved to:", saved_file.resolve())
+    print("Exists?", saved_file.exists())
+    print("Dir contents:", [p.name for p in model_saves_folder.glob("*")])
 
     print(
         f"==============\n"
