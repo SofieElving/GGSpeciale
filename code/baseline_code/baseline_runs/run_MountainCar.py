@@ -28,38 +28,38 @@ def make_action_noise(n_actions: int, sigma: float = 0.2):
     )
 
 methods = {
-    "PPO": {
-        "model": PPO,
-        "n_envs": 16,
-        "args": { # args inspired by https://arxiv.org/pdf/1707.06347
-            "learning_rate": 3e-4,      # Gradient step size (smaller = more stable learning)
-            "n_steps": 1024,            # Rollout length before each update (long horizon credit)
-            "batch_size": 64,           # Minibatch size for optimization (adds useful gradient noise)
-            "n_epochs": 4,
-            "gamma": 0.99,             # Discount factor (keeps distant +100 reward relevant)
-            "gae_lambda": 0.98,         # Bias-variance tradeoff in advantage estimation
-            "clip_range": 0.2,          # PPO trust-region style update constraint
-            "ent_coef": 0.05,           # Encourages exploration (prevents zero-action collapse)
-            "vf_coef": 0.5,             # Weight of value function loss
-            "max_grad_norm": 0.5,       # Gradient clipping for stability
-            },
-    },
-    # "DDPG": {
-    #     "model": DDPG,
+    # "PPO": {
+    #     "model": PPO,
     #     "n_envs": 16,
-    #     "args": {
-    #         "learning_rate": 1e-3,
-    #         "buffer_size": 1_000_000,
-    #         "learning_starts": 10_000,
-    #         "batch_size": 256,
-    #         "tau": 0.005,
-    #         "gamma": 0.99,
-    #         "train_freq": (1, "step"),
-    #         "gradient_steps": 1,
-    #     },
-    #     "needs_action_noise": True,
-    #     "noise_sigma": 0.2,
+    #     "args": { # args inspired by https://arxiv.org/pdf/1707.06347
+    #         "learning_rate": 3e-4,      # Gradient step size (smaller = more stable learning)
+    #         "n_steps": 1024,            # Rollout length before each update (long horizon credit)
+    #         "batch_size": 64,           # Minibatch size for optimization (adds useful gradient noise)
+    #         "n_epochs": 4,
+    #         "gamma": 0.99,             # Discount factor (keeps distant +100 reward relevant)
+    #         "gae_lambda": 0.98,         # Bias-variance tradeoff in advantage estimation
+    #         "clip_range": 0.2,          # PPO trust-region style update constraint
+    #         "ent_coef": 0.05,           # Encourages exploration (prevents zero-action collapse)
+    #         "vf_coef": 0.5,             # Weight of value function loss
+    #         "max_grad_norm": 0.5,       # Gradient clipping for stability
+    #         },
     # },
+    "DDPG": {
+        "model": DDPG,
+        "n_envs": 16,
+        "args": {
+            "learning_rate": 1e-3,
+            "buffer_size": 1_000_000,
+            "learning_starts": 10_000,
+            "batch_size": 256,
+            "tau": 0.005,
+            "gamma": 0.99,
+            "train_freq": (1, "step"),
+            "gradient_steps": 1,
+        },
+        "needs_action_noise": True,
+        "noise_sigma": 0.2,
+    },
     # "TRPO": {
     #     "model": TRPO,
     #     "n_envs": 4,
@@ -104,7 +104,7 @@ methods = {
 ENV_FACTORY = make_continuous_mountaincar
 ENV_NAME = "MountainCar"  
 
-TOTAL_TIMESTEPS = 300_000
+TOTAL_TIMESTEPS = 200_000
 results = []
 
 for method_name, spec in methods.items():
@@ -112,7 +112,7 @@ for method_name, spec in methods.items():
 
     n_envs = spec.get("n_envs", 1)
     print(n_envs)
-    train_env = make_vec_env(ENV_FACTORY, n_envs=n_envs, seed=42)
+    train_env = make_vec_env(ENV_FACTORY, n_envs=n_envs, seed=0)
     train_env = VecNormalize(train_env, norm_obs=True, norm_reward=True, clip_obs=10.0)
 
     Algo = spec["model"]
