@@ -10,7 +10,7 @@ from sb3_contrib import TRPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.evaluation import evaluate_policy
 
-from baseline_code.baseline_enviroments.cartpole_env import make_continuous_cartpole
+from baseline_code.baseline_enviroments.cartpole_env import ContinuousCartPoleEnv
 from pathlib import Path
 import sys
 
@@ -27,7 +27,7 @@ algos = ["PPO", "DDPG", "SAC", "TD3", "TRPO"]
 methods = {
     "PPO": {
         "model": PPO,
-        "usesDiscreteAction": True,
+        "usesDiscreteAction": False,
         "timeSteps": 15_000,
         "args": {
             "learning_rate": 1e-3,
@@ -81,7 +81,7 @@ methods = {
 
     "TRPO": {
         "model": TRPO,
-        "usesDiscreteAction": True,
+        "usesDiscreteAction": False,
         "timeSteps": 25_000,
         "args": {
             "gamma": 0.99,
@@ -99,8 +99,8 @@ for methodName, spec in methods.items():
         train_env = make_vec_env("CartPole-v1", n_envs=1)
         eval_env  = make_vec_env("CartPole-v1", n_envs=1)
     else:
-        train_env = make_vec_env(make_continuous_cartpole, n_envs=1)
-        eval_env  = make_vec_env(make_continuous_cartpole, n_envs=1)
+        train_env = make_vec_env(lambda: gym.wrappers.TimeLimit(ContinuousCartPoleEnv(), max_episode_steps=500))
+        eval_env = make_vec_env(lambda: gym.wrappers.TimeLimit(ContinuousCartPoleEnv(), max_episode_steps=500))
 
     model = algo("MlpPolicy", train_env, verbose=0, **args)
     model.learn(total_timesteps=spec["timeSteps"])
