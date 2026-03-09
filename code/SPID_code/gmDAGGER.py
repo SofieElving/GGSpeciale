@@ -47,10 +47,10 @@ def train_spid(teacher_path,
                                      policy, 
                                      beta)
  
-        srr = PySRRegressor(binary_operators=["+", "*", "-"], verbosity=0, maxsize=8)
+        srr = PySRRegressor(binary_operators=["+", "*", "-"], verbosity=0, maxsize=12)
         x = np.array([traj[0] for traj in dataset])
         y = np.array([traj[1] for traj in dataset])
-        weights = np.array([np.sqrt(score[2]) for score in dataset])
+        # weights = np.array([np.sqrt(score[2]) for score in dataset])
 
         # srr.fit(x, y, weights=weights)
         srr.fit(x, y)
@@ -63,7 +63,7 @@ def train_spid(teacher_path,
             env = make_vec_env(lambda: gym.wrappers.TimeLimit(ContinuousCartPoleEnv(), max_episode_steps=500))
         else: 
             #env = make_vec_env(environment)
-            env = env = make_vec_env(lambda: gym.wrappers.TimeLimit(ContinuousCartPoleEnv(), max_episode_steps=500))
+            env = make_vec_env(lambda: gym.wrappers.TimeLimit(ContinuousCartPoleEnv(), max_episode_steps=500))
         
         #env = make_vec_env(make_continuous_cartpole, n_envs=1)
 
@@ -84,6 +84,7 @@ def train_spid(teacher_path,
     print(f"Mean reward:\t{np.max(rewards):0.4f}")
     wrapper = PySRWrapper(best_policy)
     wrapper.print_info()
+    return rewards, best_policy, wrapper
 
 
 def load_teacher_env(teacher_path, teacher_model, environment):
@@ -140,8 +141,8 @@ def sample_trajectory(teacher_path, teacher_model, environment, total_timesteps,
         # if args.render:
         #     env.render()
 
-        state_loss = get_loss(env, teacher, obs)
-        trajectory += list(zip(obs, oracle_action, state_loss))
+        # state_loss = get_loss(env, teacher, obs)
+        trajectory += list(zip(obs, oracle_action))
 
         obs = next_obs
         i += 1
