@@ -18,3 +18,9 @@ code/
 └── SPID/
 ```
 
+To create environment, do: 
+```
+conda create -n thesis-env -c conda-forge python=3.10 pip numpy pandas tqdm ipykernel gymnasium shimmy -y
+conda activate thesis-env
+pip install torch stable-baselines3 sb3-contrib
+```
