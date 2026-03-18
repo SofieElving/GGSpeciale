@@ -1,0 +1,52 @@
+[
+  {
+    "teacher": "DDPG_cartpole.zip",
+    "algorithm": "DDPG",
+    "status": "success",
+    "teacher_path": "/home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/baseline_code/baseline_models/cartpole/DDPG_cartpole.zip",
+    "run_dir": "/home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_models/DDPG_cartpole",
+    "best_reward_during_search": 37.18,
+    "best_iteration": 3,
+    "n_rewards_logged": 5
+  },
+  {
+    "teacher": "PPO_cartpole.zip",
+    "algorithm": "PPO",
+    "status": "success",
+    "teacher_path": "/home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/baseline_code/baseline_models/cartpole/PPO_cartpole.zip",
+    "run_dir": "/home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_models/PPO_cartpole",
+    "best_reward_during_search": 500.0,
+    "best_iteration": 2,
+    "n_rewards_logged": 5
+  },
+  {
+    "teacher": "SAC_cartpole.zip",
+    "algorithm": "SAC",
+    "status": "success",
+    "teacher_path": "/home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/baseline_code/baseline_models/cartpole/SAC_cartpole.zip",
+    "run_dir": "/home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_models/SAC_cartpole",
+    "best_reward_during_search": 500.0,
+    "best_iteration": 0,
+    "n_rewards_logged": 5
+  },
+  {
+    "teacher": "TD3_cartpole.zip",
+    "algorithm": "TD3",
+    "status": "success",
+    "teacher_path": "/home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/baseline_code/baseline_models/cartpole/TD3_cartpole.zip",
+    "run_dir": "/home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_models/TD3_cartpole",
+    "best_reward_during_search": 500.0,
+    "best_iteration": 1,
+    "n_rewards_logged": 5
+  },
+  {
+    "teacher": "TRPO_cartpole.zip",
+    "algorithm": "TRPO",
+    "status": "success",
+    "teacher_path": "/home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/baseline_code/baseline_models/cartpole/TRPO_cartpole.zip",
+    "run_dir": "/home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_models/TRPO_cartpole",
+    "best_reward_during_search": 500.0,
+    "best_iteration": 1,
+    "n_rewards_logged": 5
+  }
+]
