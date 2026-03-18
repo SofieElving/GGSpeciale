@@ -10,8 +10,8 @@ from tqdm import tqdm
 from pysr import PySRRegressor
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.evaluation import evaluate_policy
-from stable_baselines3 import PPO, DDPG, SAC, TD3
-from sb3_contrib import TRPO
+from stable_baselines3 import PPO, SAC, TD3, A2C, DDPG
+from sb3_contrib import TRPO, TQC, ARS, CrossQ
 
 from PySRWrapper import PySRWrapper
 
@@ -90,6 +90,7 @@ def train_spid(teacher_path,
                environment, 
                n_iter, 
                total_timesteps, 
+               save_results=False, 
                verbose=1,
                 n_eval_episodes=100):
     
@@ -105,18 +106,22 @@ def train_spid(teacher_path,
     for i in tqdm(range(n_iter), disable=verbose > 0):
         beta = 1 if i == 0 else 0.5
 
-        dataset += sample_trajectory(teacher_path, 
+        new_data = sample_trajectory(teacher_path, 
                                      teacher_model, 
                                      environment, 
                                      total_timesteps, 
                                      n_iter, 
                                      policy, 
                                      beta)
+        if not dataset:
+            dataset = new_data.copy()
+        else: 
+            dataset = [np.concatenate((x, y), axis=0) for x, y in zip(dataset, new_data)]
  
-        srr = PySRRegressor(binary_operators=["+", "*", "-"], verbosity=0, maxsize=12, run_id=f"")
-        x = np.array([traj[0] for traj in dataset])
-        y = np.array([traj[1] for traj in dataset])
-        # weights = np.array([np.sqrt(score[2]) for score in dataset])
+        srr = PySRRegressor(binary_operators=["+", "*", "-"], verbosity=1, maxsize=12, run_id=f"")
+        x = dataset[0]
+        y = dataset[1]
+        weights = dataset[2]
 
         # srr.fit(x, y, weights=weights)
         srr.fit(x, y)
@@ -143,7 +148,8 @@ def train_spid(teacher_path,
 
     # Save best symbolic policy
     best_policy_path = run_dir / "best_student_policy.joblib"
-    best_wrapper.save(best_policy_path)
+    if save_results:
+        best_wrapper.save(best_policy_path)
 
     # Save reward history
     save_rewards_csv(rewards, run_dir / "student_rewards.csv")
@@ -171,20 +177,21 @@ def train_spid(teacher_path,
     student_eval_env.close()
 
     # Save final comparison
-    save_final_results_json(
-        run_dir / "final_results.json",
-        teacher_metrics=(teacher_mean_reward, teacher_std_reward),
-        student_metrics=(student_mean_reward, student_std_reward),
-        best_iteration=best_idx,
-        dataset_size=len(dataset),
-    )
+    if save_results:
+        save_final_results_json(
+            run_dir / "final_results.json",
+            teacher_metrics=(teacher_mean_reward, teacher_std_reward),
+            student_metrics=(student_mean_reward, student_std_reward),
+            best_iteration=best_idx,
+            dataset_size=len(dataset),
+        )
 
-    # Optional: save a simple CSV comparison too
-    with (run_dir / "teacher_student_comparison.csv").open("w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["policy", "mean_reward", "std_reward"])
-        writer.writerow(["teacher", float(teacher_mean_reward), float(teacher_std_reward)])
-        writer.writerow(["student_best", float(student_mean_reward), float(student_std_reward)])
+        # Optional: save a simple CSV comparison too
+        with (run_dir / "teacher_student_comparison.csv").open("w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["policy", "mean_reward", "std_reward"])
+            writer.writerow(["teacher", float(teacher_mean_reward), float(teacher_std_reward)])
+            writer.writerow(["student_best", float(student_mean_reward), float(student_std_reward)])
 
     print(f"SPID iteration complete. Dataset size: {len(dataset)}")
     print(f"Best policy iteration: {best_idx}")
@@ -195,15 +202,6 @@ def train_spid(teacher_path,
 
     best_wrapper.print_info()
     return rewards, best_policy, best_wrapper, run_dir
-
-    # # TODO: Save best policy
-    # print(f"SPID iteration complete. Dataset size: {len(dataset)}")
-    # best_policy = policies[np.argmax(rewards)]
-    # print(f"Best policy:\t{np.argmax(rewards)}")
-    # print(f"Mean reward:\t{np.max(rewards):0.4f}")
-    # wrapper = PySRWrapper(best_policy)
-    # wrapper.print_info()
-    # return rewards, best_policy, wrapper
 
 
 def load_teacher_env(teacher_path, teacher_model, environment):
@@ -235,8 +233,14 @@ def sample_trajectory(teacher_path, teacher_model, environment, total_timesteps,
     obs = env.reset()
     n_steps = total_timesteps // n_iter
     i = 1
+
+    states = []
+    training_actions = []
+    teacher_actions = []
+    rewards = []
+    next_states = []
     # print(" ===== sampling trajectories =====")
-    while len(trajectory) < n_steps:
+    while len(states) < n_steps:
         # print(f"\niteration {i}")
         
         active_policy = [policy, teacher][np.random.binomial(1, beta)]
@@ -251,25 +255,40 @@ def sample_trajectory(teacher_path, teacher_model, environment, total_timesteps,
         if not isinstance(active_policy, PySRRegressor):
             oracle_action = action
         else:
-            oracle_action = teacher.predict(obs, deterministic=True)[0]
+            oracle_action = teacher.predict(obs, deterministic=True)
 
         # print(f"Chose action: {action}. Oracle action: {oracle_action}")
 
-        next_obs, reward, done, info = env.step(action)
+        next_obs, reward, done, _ = env.step(action)
+        #trajectory += list(zip(obs, action, reward, next_obs))
 
-        # if args.render:
-        #     env.render()
+        # flatten id needed
+        obs = obs.reshape(-1) if obs.ndim > 1 else obs
+        reward = reward.reshape(-1) if reward.ndim > 1 else reward
+        action = action.reshape(-1) if action.ndim > 1 else action
+        oracle_action = oracle_action.reshape(-1) if oracle_action.ndim > 1 else oracle_action
 
-        # state_loss = get_loss(env, teacher, obs)
-        trajectory += list(zip(obs, oracle_action))
+        states.append(obs)
+        training_actions.append(action)
+        teacher_actions.append(oracle_action)
+        rewards.append(reward)
+        next_states.append(next_obs)
 
         obs = next_obs
         i += 1
 
+        if done:
+            obs = env.reset()
+    
+    # Note: advantage is training actions, and L2 loss is teacher actions (?) 
+    weights = get_advantage_weights(states, training_actions, rewards, next_states, teacher)
+
+    trajectory = [np.array(states), np.array(teacher_actions), weights]
+
     return trajectory
 
 
-def get_loss(env, model, obs):
+def get_advantage_weights(states, actions, rewards, next_states, expert, gamma=0.99):
     """
     This is the ~l loss from the paper that tries to capture
     how "critical" a state is, i.e. how much of a difference
@@ -278,33 +297,65 @@ def get_loss(env, model, obs):
     Instead of training the decision tree with this loss directly (which is not possible because it is not convex)
     we use it as a weight for the samples in the dataset which in expectation leads to the same result
     """
- 
-    if isinstance(model, DQN) or isinstance(model, DDPG): # For RL algorithms with Q-values 
 
-        # For q-learners it is the difference between the best and worst q value
-        q_values = model.q_net(torch.from_numpy(obs)).detach().numpy()
-        # q_values n_env x n_actions
-        return q_values.max(axis=1) - q_values.min(axis=1)
+    device = torch.device("cuda")
+
+    with torch.no_grad():
+
+        states_t = torch.from_numpy(np.stack(states)).to(torch.float32).to(device)
+        actions_t = torch.from_numpy(np.stack(actions)).to(torch.float32).to(device)
+        rewards_t = torch.from_numpy(np.array(rewards)).to(torch.float32).to(device).view(-1)
+        next_states_t = torch.from_numpy(np.stack(next_states)).to(torch.float32).to(device)
     
-    if isinstance(model, PPO): # For RL algorithms without Q-values 
+    
+    # Check if the policy has predict_values (on-policy algorithms)
+    if hasattr(expert.policy, 'predict_values'):
+        # On-policy algorithms (PPO, A2C, TRPO)
+        v_s = expert.policy.predict_values(states_t).squeeze(-1)
+        v_sp = expert.policy.predict_values(next_states_t).squeeze(-1)
 
-        # For policy gradient methods we use the max entropy formulation
-        # to get Q(s, a) \approx log pi(a|s)
-        # See Ziebart et al. 2008
-        # assert isinstance(env.action_space,
-        #                   gym.spaces.Discrete), "Only discrete action spaces supported for loss function"
-        # possible_actions = np.arange(env.action_space.n)
+        q_sa = rewards_t + gamma * v_sp
+        adv = q_sa - v_s
 
-        possible_actions = np.arange(2)
+        print("v_s:", v_s.shape)
+        print("v_sp:", v_sp.shape)
+        print("rewards:", rewards_t.shape)
 
-        obs = torch.from_numpy(obs).to("cuda")
-        log_probs = []
-        for action in possible_actions:
-            action = torch.from_numpy(np.array([action])).repeat(obs.shape[0]).to("cuda")
-            _, log_prob, _ = model.policy.evaluate_actions(obs, action)
-            log_probs.append(log_prob.cpu().detach().numpy().flatten())
+    return adv.cpu().detach().numpy()
 
-        log_probs = np.array(log_probs).T
-        return log_probs.max(axis=1) - log_probs.min(axis=1)
+    # print("===states===")
+    # print(states_t)
 
-    raise NotImplementedError(f"Model type {type(model)} not supported")
+    # print("===actions===")
+    # print(actions_t)
+
+    # print("===rewards===")
+    # print(rewards)
+
+    # print("===nextstates===")
+    # print(next_states_t)
+    
+    # weights = np.array([np.sqrt(score[2]) for score in dataset])
+    
+    # if isinstance(expert, PPO): # For RL algorithms without Q-values 
+
+    #     # For policy gradient methods we use the max entropy formulation
+    #     # to get Q(s, a) \approx log pi(a|s)
+    #     # See Ziebart et al. 2008
+    #     # assert isinstance(env.action_space,
+    #     #                   gym.spaces.Discrete), "Only discrete action spaces supported for loss function"
+    #     # possible_actions = np.arange(env.action_space.n)
+
+    #     possible_actions = np.arange(2)
+
+    #     obs = torch.from_numpy(obs).to("cuda")
+    #     log_probs = []
+    #     for action in possible_actions:
+    #         action = torch.from_numpy(np.array([action])).repeat(obs.shape[0]).to("cuda")
+    #         _, log_prob, _ = model.policy.evaluate_actions(obs, action)
+    #         log_probs.append(log_prob.cpu().detach().numpy().flatten())
+
+    #     log_probs = np.array(log_probs).T
+    #     return log_probs.max(axis=1) - log_probs.min(axis=1)
+
+    # raise NotImplementedError(f"Model type {type(model)} not supported")
