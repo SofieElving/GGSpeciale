@@ -13,8 +13,14 @@ from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3 import PPO, DDPG, SAC, TD3
 from sb3_contrib import TRPO
 
-from SPID_code.PySRWrapper import PySRWrapper
+from PySRWrapper import PySRWrapper
+
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from baseline_code.baseline_enviroments.cartpole_env import ContinuousCartPoleEnv
+
 
 import torch
 
@@ -229,17 +235,17 @@ def sample_trajectory(teacher_path, teacher_model, environment, total_timesteps,
     obs = env.reset()
     n_steps = total_timesteps // n_iter
     i = 1
-    print(" ===== sampling trajectories =====")
+    # print(" ===== sampling trajectories =====")
     while len(trajectory) < n_steps:
-        print(f"\niteration {i}")
+        # print(f"\niteration {i}")
         
         active_policy = [policy, teacher][np.random.binomial(1, beta)]
 
         if isinstance(active_policy, PySRRegressor):
-            print("SR policy chosen")
+            # print("SR policy chosen")
             action = active_policy.predict(obs)
         else:
-            print("Teacher chosen")
+            # print("Teacher chosen")
             action, _states = active_policy.predict(obs, deterministic=True)
         
         if not isinstance(active_policy, PySRRegressor):
@@ -247,7 +253,7 @@ def sample_trajectory(teacher_path, teacher_model, environment, total_timesteps,
         else:
             oracle_action = teacher.predict(obs, deterministic=True)[0]
 
-        print(f"Chose action: {action}. Oracle action: {oracle_action}")
+        # print(f"Chose action: {action}. Oracle action: {oracle_action}")
 
         next_obs, reward, done, info = env.step(action)
 

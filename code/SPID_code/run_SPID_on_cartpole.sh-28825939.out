@@ -1,0 +1,8 @@
+======================================
+Starting SPID CartPole experiment
+Date: Wed Mar 11 01:13:06 PM CET 2026
+Host: cn-1060
+Working dir: /home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code
+======================================
+Working dir: /home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code
+[2026-03-11T13:15:28.815] error: *** JOB 28825939 ON cn-1060 CANCELLED AT 2026-03-11T13:15:28 DUE to SIGNAL Terminated ***
