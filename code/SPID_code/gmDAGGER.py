@@ -96,6 +96,8 @@ def train_spid(teacher_path,
     
     # print(f"Training SPID on {env_name}")
 
+    loss_str = "loss(pred, target, w) = w .* (pred .- target).^2"
+
     dataset = []
     policy = None
     policies = []
@@ -118,17 +120,30 @@ def train_spid(teacher_path,
         else: 
             dataset = [np.concatenate((x, y), axis=0) for x, y in zip(dataset, new_data)]
  
-        srr = PySRRegressor(binary_operators=["+", "*", "-"], verbosity=1, maxsize=12, run_id=f"")
+        srr = PySRRegressor(binary_operators=["+", "*", "-"], 
+                            verbosity=1, 
+                            maxsize=12, 
+                            temp_equation_file=False,
+                            delete_tempfiles=True,
+                            output_jax_format=False,
+                            output_torch_format=False,
+                            elementwise_loss=loss_str
+                            )
         x = dataset[0]
         y = dataset[1]
-        weights = dataset[2]
+        advs = dataset[2]
 
-        # srr.fit(x, y, weights=weights)
-        srr.fit(x, y)
+        weights = np.abs(advs)
+        weights = weights / np.max(weights) if np.max(weights) > 0 else weights
+
+        srr.fit(x, y, weights=weights)
+        print(f"ready to train")
+        # srr.fit(x, y)
 
         policies.append(srr)
         policy = srr
 
+        print(f"about to evaluate")
         eval_env = make_eval_env()
         mean_reward, std_reward = evaluate_policy(
             PySRWrapper(policy),
@@ -151,9 +166,9 @@ def train_spid(teacher_path,
     if save_results:
         best_wrapper.save(best_policy_path)
 
-    # Save reward history
-    save_rewards_csv(rewards, run_dir / "student_rewards.csv")
-    save_iteration_summary_csv(rewards, run_dir / "summary.csv")
+        # Save reward history
+        save_rewards_csv(rewards, run_dir / "student_rewards.csv")
+        save_iteration_summary_csv(rewards, run_dir / "summary.csv")
 
     # Evaluate teacher
     teacher = teacher_model.load(teacher_path)
@@ -239,30 +254,24 @@ def sample_trajectory(teacher_path, teacher_model, environment, total_timesteps,
     teacher_actions = []
     rewards = []
     next_states = []
-    # print(" ===== sampling trajectories =====")
+
     while len(states) < n_steps:
-        # print(f"\niteration {i}")
         
         active_policy = [policy, teacher][np.random.binomial(1, beta)]
 
         if isinstance(active_policy, PySRRegressor):
-            # print("SR policy chosen")
             action = active_policy.predict(obs)
         else:
-            # print("Teacher chosen")
             action, _states = active_policy.predict(obs, deterministic=True)
         
         if not isinstance(active_policy, PySRRegressor):
-            oracle_action = action
+            oracle_action = action.copy()
         else:
-            oracle_action = teacher.predict(obs, deterministic=True)
-
-        # print(f"Chose action: {action}. Oracle action: {oracle_action}")
+            oracle_action, _states = teacher.predict(obs, deterministic=True)
 
         next_obs, reward, done, _ = env.step(action)
-        #trajectory += list(zip(obs, action, reward, next_obs))
-
-        # flatten id needed
+        
+        # flatten if needed
         obs = obs.reshape(-1) if obs.ndim > 1 else obs
         reward = reward.reshape(-1) if reward.ndim > 1 else reward
         action = action.reshape(-1) if action.ndim > 1 else action
@@ -280,9 +289,10 @@ def sample_trajectory(teacher_path, teacher_model, environment, total_timesteps,
         if done:
             obs = env.reset()
     
+    print(f"finished collecting trajectories")
+    
     # Note: advantage is training actions, and L2 loss is teacher actions (?) 
     weights = get_advantage_weights(states, training_actions, rewards, next_states, teacher)
-
     trajectory = [np.array(states), np.array(teacher_actions), weights]
 
     return trajectory
@@ -297,7 +307,7 @@ def get_advantage_weights(states, actions, rewards, next_states, expert, gamma=0
     Instead of training the decision tree with this loss directly (which is not possible because it is not convex)
     we use it as a weight for the samples in the dataset which in expectation leads to the same result
     """
-
+    print(f"computing advantages")
     device = torch.device("cuda")
 
     with torch.no_grad():
@@ -308,18 +318,88 @@ def get_advantage_weights(states, actions, rewards, next_states, expert, gamma=0
         next_states_t = torch.from_numpy(np.stack(next_states)).to(torch.float32).to(device)
     
     
-    # Check if the policy has predict_values (on-policy algorithms)
-    if hasattr(expert.policy, 'predict_values'):
-        # On-policy algorithms (PPO, A2C, TRPO)
-        v_s = expert.policy.predict_values(states_t).squeeze(-1)
-        v_sp = expert.policy.predict_values(next_states_t).squeeze(-1)
+        # Check if the policy has predict_values (on-policy algorithms)
+        if hasattr(expert.policy, 'predict_values'):
+            # On-policy algorithms (PPO, A2C, TRPO)
+            v_s = expert.policy.predict_values(states_t).squeeze(-1)
+            v_sp = expert.policy.predict_values(next_states_t).squeeze(-1)
 
-        q_sa = rewards_t + gamma * v_sp
-        adv = q_sa - v_s
-
-        print("v_s:", v_s.shape)
-        print("v_sp:", v_sp.shape)
-        print("rewards:", rewards_t.shape)
+            q_sa = rewards_t + gamma * v_sp
+            adv = q_sa - v_s
+        else:
+            # Off-policy algorithms (SAC, TD3, DDPG, TQC)
+            try:
+                # Use Q-values to approximate advantage
+                if hasattr(expert.policy, 'critic'):
+                    # Determine algorithm type and handle actor calls appropriately
+                    algorithm_name = expert.__class__.__name__.lower()
+                    
+                    # Get current Q-values
+                    if hasattr(expert.policy.critic, 'q1_forward'):
+                        # SAC has q1_forward method
+                        q_s = expert.policy.critic.q1_forward(states_t, actions_t).squeeze(-1).numpy()
+                        
+                        # Get next actions from policy - handle SAC's variable output
+                        if 'sac' in algorithm_name:
+                            # SAC's actor can return different outputs depending on context
+                            # Try different approaches to get the action
+                            try:
+                                # First try: actor might return (action, log_prob)
+                                actor_output = expert.policy.actor(next_states_t)
+                                if isinstance(actor_output, tuple):
+                                    next_actions, _ = actor_output
+                                else:
+                                    next_actions = actor_output
+                            except Exception as e:
+                                print(f"SAC actor call method 1 failed: {e}")
+                                try:
+                                    # Second try: use the action_net directly
+                                    latent_pi = expert.policy.actor.latent_pi(next_states_t)
+                                    next_actions = expert.policy.actor.mu(latent_pi)
+                                    # Apply tanh squashing like SAC does
+                                    next_actions = torch.tanh(next_actions)
+                                except Exception as e2:
+                                    print(f"SAC actor call method 2 failed: {e2}")
+                                    # Fallback: use expert.predict to get actions
+                                    next_actions_np, _ = expert.predict(next_states_t.numpy(), deterministic=True)
+                                    next_actions = torch.tensor(next_actions_np, dtype=torch.float32)
+                        else:
+                            # Other algorithms with q1_forward (like TQC)
+                            actor_output = expert.policy.actor(next_states_t)
+                            if isinstance(actor_output, tuple):
+                                next_actions, _ = actor_output
+                            else:
+                                next_actions = actor_output
+                        
+                        # Ensure proper shape
+                        if len(next_actions.shape) == 1:
+                            next_actions = next_actions.unsqueeze(-1)
+                        q_sp = expert.policy.critic.q1_forward(next_states_t, next_actions).squeeze(-1).numpy()
+                        
+                    elif hasattr(expert.policy.critic, 'forward'):
+                        # TD3, DDPG use forward method
+                        q_s = expert.policy.critic.forward(states_t, actions_t).squeeze(-1).numpy()
+                        # Get next actions from policy (TD3/DDPG returns only action)
+                        next_actions = expert.policy.actor(next_states_t)
+                        if len(next_actions.shape) == 1:
+                            next_actions = next_actions.unsqueeze(-1)
+                        q_sp = expert.policy.critic.forward(next_states_t, next_actions).squeeze(-1).numpy()
+                    else:
+                        raise AttributeError("Critic method not found")
+                    
+                    # Compute advantage as TD error: Q(s,a) - (r + γ * Q(s',π(s')))
+                    target_q = rewards + gamma * q_sp
+                    adv = q_s - target_q
+                    print(f"Successfully computed Q-based advantages for {algorithm_name}")
+                else:
+                    raise AttributeError("No critic found")
+                    
+            except Exception as e:
+                # More robust fallback for off-policy algorithms
+                print(f"Warning: Q-network computation failed ({str(e)}), using simplified advantage computation")
+                # Use a simple advantage approximation based on rewards
+                # This is a reasonable fallback since we're doing imitation learning
+                adv = rewards - np.mean(rewards)  # Center rewards around 0
 
     return adv.cpu().detach().numpy()
 
