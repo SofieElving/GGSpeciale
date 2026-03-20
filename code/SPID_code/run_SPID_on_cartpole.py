@@ -30,7 +30,7 @@ warnings.filterwarnings("ignore")
 # Paths
 # -------------------------------------------------------------------
 teacher_path = Path("/home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/baseline_code/baseline_models/cartpole")
-save_folder = Path("/home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_models")
+save_folder = Path("/home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_GMDAgger_models")
 
 teacher_files = [
     "DDPG_cartpole.zip",
@@ -97,6 +97,7 @@ for teacher_file in teacher_files:
             environment=ENV_NAME,
             n_iter=N_ITER,
             total_timesteps=TOTAL_TIMESTEPS,
+            save_results=True,
             verbose=VERBOSE,
             n_eval_episodes=N_EVAL_EPISODES,
         )
