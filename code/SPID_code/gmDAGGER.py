@@ -121,7 +121,7 @@ def train_spid(teacher_path,
             dataset = [np.concatenate((x, y), axis=0) for x, y in zip(dataset, new_data)]
  
         srr = PySRRegressor(binary_operators=["+", "*", "-"], 
-                            verbosity=1, 
+                            verbosity=0, 
                             maxsize=12, 
                             temp_equation_file=False,
                             delete_tempfiles=True,
@@ -298,110 +298,150 @@ def sample_trajectory(teacher_path, teacher_model, environment, total_timesteps,
     return trajectory
 
 
-def get_advantage_weights(states, actions, rewards, next_states, expert, gamma=0.99):
-    """
-    This is the ~l loss from the paper that tries to capture
-    how "critical" a state is, i.e. how much of a difference
-    it makes to choose the best vs the worst action
 
-    Instead of training the decision tree with this loss directly (which is not possible because it is not convex)
-    we use it as a weight for the samples in the dataset which in expectation leads to the same result
+def get_advantage_weights(
+    states,
+    actions,
+    rewards,
+    next_states,
+    expert,
+    gamma=0.99,
+    device=None,
+    force_cpu=True,
+):
     """
-    print(f"computing advantages")
-    device = torch.device("cuda")
+    Compute sample-wise advantage weights.
+
+    Parameters
+    ----------
+    states, actions, rewards, next_states : sequence-like
+        Transition data.
+    expert : SB3 model
+        Trained expert policy.
+    gamma : float
+        Discount factor.
+    device : str | torch.device | None
+        Target device. If None, infer from policy unless force_cpu=True.
+    force_cpu : bool
+        If True, move everything to CPU and run there.
+
+    Returns
+    -------
+    adv : np.ndarray
+        1D array of advantage weights.
+    """
+    print("computing advantages")
+
+    # Resolve device
+    if force_cpu:
+        device = torch.device("cpu")
+    elif device is None:
+        try:
+            device = next(expert.policy.parameters()).device
+        except StopIteration:
+            device = torch.device("cpu")
+    else:
+        device = torch.device(device)
+
+    # Move policy to target device so model/tensors always match
+    expert.policy = expert.policy.to(device)
+
+    def to_tensor(x, dtype=torch.float32):
+        if isinstance(x, torch.Tensor):
+            return x.to(device=device, dtype=dtype)
+        return torch.as_tensor(x, dtype=dtype, device=device)
+
+    def ensure_2d_action(x):
+        if x.ndim == 1:
+            return x.unsqueeze(-1)
+        return x
 
     with torch.no_grad():
+        # Build tensors directly on the chosen device
+        states_t = to_tensor(np.stack(states), dtype=torch.float32)
+        actions_t = ensure_2d_action(to_tensor(np.stack(actions), dtype=torch.float32))
+        rewards_t = to_tensor(np.asarray(rewards), dtype=torch.float32).view(-1)
+        next_states_t = to_tensor(np.stack(next_states), dtype=torch.float32)
 
-        states_t = torch.from_numpy(np.stack(states)).to(torch.float32).to(device)
-        actions_t = torch.from_numpy(np.stack(actions)).to(torch.float32).to(device)
-        rewards_t = torch.from_numpy(np.array(rewards)).to(torch.float32).to(device).view(-1)
-        next_states_t = torch.from_numpy(np.stack(next_states)).to(torch.float32).to(device)
-    
-    
-        # Check if the policy has predict_values (on-policy algorithms)
-        if hasattr(expert.policy, 'predict_values'):
-            # On-policy algorithms (PPO, A2C, TRPO)
+        # On-policy algorithms: PPO, A2C, TRPO...
+        if hasattr(expert.policy, "predict_values"):
             v_s = expert.policy.predict_values(states_t).squeeze(-1)
             v_sp = expert.policy.predict_values(next_states_t).squeeze(-1)
-
             q_sa = rewards_t + gamma * v_sp
-            adv = q_sa - v_s
-        else:
-            # Off-policy algorithms (SAC, TD3, DDPG, TQC)
-            try:
-                # Use Q-values to approximate advantage
-                if hasattr(expert.policy, 'critic'):
-                    # Determine algorithm type and handle actor calls appropriately
-                    algorithm_name = expert.__class__.__name__.lower()
-                    
-                    # Get current Q-values
-                    if hasattr(expert.policy.critic, 'q1_forward'):
-                        # SAC has q1_forward method
-                        q_s = expert.policy.critic.q1_forward(states_t, actions_t).squeeze(-1).numpy()
-                        
-                        # Get next actions from policy - handle SAC's variable output
-                        if 'sac' in algorithm_name:
-                            # SAC's actor can return different outputs depending on context
-                            # Try different approaches to get the action
-                            try:
-                                # First try: actor might return (action, log_prob)
-                                actor_output = expert.policy.actor(next_states_t)
-                                if isinstance(actor_output, tuple):
-                                    next_actions, _ = actor_output
-                                else:
-                                    next_actions = actor_output
-                            except Exception as e:
-                                print(f"SAC actor call method 1 failed: {e}")
-                                try:
-                                    # Second try: use the action_net directly
-                                    latent_pi = expert.policy.actor.latent_pi(next_states_t)
-                                    next_actions = expert.policy.actor.mu(latent_pi)
-                                    # Apply tanh squashing like SAC does
-                                    next_actions = torch.tanh(next_actions)
-                                except Exception as e2:
-                                    print(f"SAC actor call method 2 failed: {e2}")
-                                    # Fallback: use expert.predict to get actions
-                                    next_actions_np, _ = expert.predict(next_states_t.numpy(), deterministic=True)
-                                    next_actions = torch.tensor(next_actions_np, dtype=torch.float32)
-                        else:
-                            # Other algorithms with q1_forward (like TQC)
-                            actor_output = expert.policy.actor(next_states_t)
-                            if isinstance(actor_output, tuple):
-                                next_actions, _ = actor_output
-                            else:
-                                next_actions = actor_output
-                        
-                        # Ensure proper shape
-                        if len(next_actions.shape) == 1:
-                            next_actions = next_actions.unsqueeze(-1)
-                        q_sp = expert.policy.critic.q1_forward(next_states_t, next_actions).squeeze(-1).numpy()
-                        
-                    elif hasattr(expert.policy.critic, 'forward'):
-                        # TD3, DDPG use forward method
-                        q_s = expert.policy.critic.forward(states_t, actions_t).squeeze(-1).numpy()
-                        # Get next actions from policy (TD3/DDPG returns only action)
-                        next_actions = expert.policy.actor(next_states_t)
-                        if len(next_actions.shape) == 1:
-                            next_actions = next_actions.unsqueeze(-1)
-                        q_sp = expert.policy.critic.forward(next_states_t, next_actions).squeeze(-1).numpy()
-                    else:
-                        raise AttributeError("Critic method not found")
-                    
-                    # Compute advantage as TD error: Q(s,a) - (r + γ * Q(s',π(s')))
-                    target_q = rewards + gamma * q_sp
-                    adv = q_s - target_q
-                    print(f"Successfully computed Q-based advantages for {algorithm_name}")
-                else:
-                    raise AttributeError("No critic found")
-                    
-            except Exception as e:
-                # More robust fallback for off-policy algorithms
-                print(f"Warning: Q-network computation failed ({str(e)}), using simplified advantage computation")
-                # Use a simple advantage approximation based on rewards
-                # This is a reasonable fallback since we're doing imitation learning
-                adv = rewards - np.mean(rewards)  # Center rewards around 0
+            adv_t = q_sa - v_s
 
-    return adv.cpu().detach().numpy()
+        # Off-policy algorithms: SAC, TD3, DDPG, TQC...
+        else:
+            try:
+                if not hasattr(expert.policy, "critic"):
+                    raise AttributeError("No critic found on policy")
+
+                algorithm_name = expert.__class__.__name__.lower()
+
+                # ---- SAC / TQC-style critic with q1_forward ----
+                if hasattr(expert.policy.critic, "q1_forward"):
+                    q_s = expert.policy.critic.q1_forward(states_t, actions_t).squeeze(-1)
+
+                    if "sac" in algorithm_name:
+                        try:
+                            actor_output = expert.policy.actor(next_states_t)
+                            next_actions = actor_output[0] if isinstance(actor_output, tuple) else actor_output
+                        except Exception as e1:
+                            print(f"SAC actor call method 1 failed: {e1}")
+                            try:
+                                latent_pi = expert.policy.actor.latent_pi(next_states_t)
+                                next_actions = expert.policy.actor.mu(latent_pi)
+                                next_actions = torch.tanh(next_actions)
+                            except Exception as e2:
+                                print(f"SAC actor call method 2 failed: {e2}")
+                                # Fallback through expert.predict; returns numpy on CPU
+                                next_states_np = next_states_t.detach().cpu().numpy()
+                                next_actions_np, _ = expert.predict(next_states_np, deterministic=True)
+                                next_actions = to_tensor(next_actions_np, dtype=torch.float32)
+                    else:
+                        actor_output = expert.policy.actor(next_states_t)
+                        next_actions = actor_output[0] if isinstance(actor_output, tuple) else actor_output
+
+                    next_actions = ensure_2d_action(next_actions)
+                    next_actions = next_actions.to(device=device, dtype=torch.float32)
+
+                    q_sp = expert.policy.critic.q1_forward(next_states_t, next_actions).squeeze(-1)
+
+                # ---- TD3 / DDPG-style critic forward ----
+                elif hasattr(expert.policy.critic, "forward"):
+                    q_s = expert.policy.critic(states_t, actions_t).squeeze(-1)
+
+                    next_actions = expert.policy.actor(next_states_t)
+                    if isinstance(next_actions, tuple):
+                        next_actions = next_actions[0]
+
+                    next_actions = ensure_2d_action(next_actions)
+                    next_actions = next_actions.to(device=device, dtype=torch.float32)
+
+                    q_sp = expert.policy.critic(next_states_t, next_actions).squeeze(-1)
+
+                else:
+                    raise AttributeError("Critic method not found")
+
+                # Advantage from TD error:
+                # A(s,a) ≈ Q(s,a) - [r + gamma * Q(s', pi(s'))]
+                target_q = rewards_t + gamma * q_sp
+                adv_t = q_s - target_q
+
+                print(f"Successfully computed Q-based advantages for {algorithm_name} on {device}")
+
+            except Exception as e:
+                print(f"Warning: Q-network computation failed ({e}), using simplified advantage computation")
+                rewards_np = rewards_t.detach().cpu().numpy()
+                adv_t = torch.as_tensor(
+                    rewards_np - rewards_np.mean(),
+                    dtype=torch.float32,
+                    device=device,
+                )
+
+    adv = adv_t.detach().cpu().numpy()
+    adv = np.squeeze(adv)
+    return adv
 
     # print("===states===")
     # print(states_t)
