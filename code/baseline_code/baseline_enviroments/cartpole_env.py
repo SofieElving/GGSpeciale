@@ -52,9 +52,10 @@ from gymnasium import spaces
 class ContinuousCartPoleEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 50}
 
-    def __init__(self, render_mode=None):
+    def __init__(self, render_mode=None, max_episode_steps=500):
         super().__init__()
         self.render_mode = render_mode
+        self.max_episode_steps = max_episode_steps
 
         # Continuous action: one scalar in [-1, 1]
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
@@ -88,6 +89,7 @@ class ContinuousCartPoleEnv(gym.Env):
         return self.state.copy(), {}
 
     def step(self, action):
+        self.step_count += 1
         a = float(np.asarray(action, dtype=np.float32).squeeze())
         a = float(np.clip(a, -1.0, 1.0))
         force = a * self.force_mag
@@ -116,6 +118,6 @@ class ContinuousCartPoleEnv(gym.Env):
             or theta > self.theta_threshold_radians
         )
         reward = 1.0
-        truncated = False
+        truncated = self.step_count >= self.max_episode_steps
 
         return self.state.copy(), reward, terminated, truncated, {}

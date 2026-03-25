@@ -19,18 +19,27 @@ import sys
 import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from baseline_code.baseline_enviroments.cartpole_env import ContinuousCartPoleEnv
 
 
 import torch
 
 
-def make_eval_env():
-    return make_vec_env(
-        lambda: gym.wrappers.TimeLimit(ContinuousCartPoleEnv(), max_episode_steps=500),
-        n_envs=1,
-    )
+def create_env(environment, env_kwargs=None):
+    env_kwargs = env_kwargs or {}
 
+    if isinstance(environment, str):
+        # Gymnasium registered env
+        return make_vec_env(environment, n_envs=1, env_kwargs=env_kwargs)
+
+    elif callable(environment):
+        # function or class (e.g. ContinuousCartPoleEnv)
+        return make_vec_env(environment, n_envs=1, env_kwargs=env_kwargs)
+
+    else:
+        raise ValueError(
+            f"Unsupported environment type: {type(environment)}. "
+            "Must be str, callable, or env class."
+        )
 
 def create_run_folder(save_folder_path):
     """
@@ -144,7 +153,7 @@ def train_spid(teacher_path,
         policy = srr
 
         print(f"about to evaluate")
-        eval_env = make_eval_env()
+        eval_env = create_env(environment)
         mean_reward, std_reward = evaluate_policy(
             PySRWrapper(policy),
             eval_env,
@@ -172,7 +181,7 @@ def train_spid(teacher_path,
 
     # Evaluate teacher
     teacher = teacher_model.load(teacher_path)
-    teacher_eval_env = make_eval_env()
+    teacher_eval_env = create_env(environment)
     teacher_mean_reward, teacher_std_reward = evaluate_policy(
         teacher,
         teacher_eval_env,
@@ -182,7 +191,7 @@ def train_spid(teacher_path,
     teacher_eval_env.close()
 
     # Evaluate best student
-    student_eval_env = make_eval_env()
+    student_eval_env = create_env(environment)
     student_mean_reward, student_std_reward = evaluate_policy(
         best_wrapper,
         student_eval_env,
@@ -220,15 +229,7 @@ def train_spid(teacher_path,
 
 
 def load_teacher_env(teacher_path, teacher_model, environment):
-    if isinstance(teacher_model, PPO):
-        # env = make_vec_env(make_continuous_cartpole, n_envs=1)
-        env = make_vec_env(lambda: gym.wrappers.TimeLimit(ContinuousCartPoleEnv(), max_episode_steps=500))
-    else: 
-        #env = make_vec_env(environment)
-        env = make_vec_env(lambda: gym.wrappers.TimeLimit(ContinuousCartPoleEnv(), max_episode_steps=500))
-    
-    #env = make_vec_env(make_continuous_cartpole, n_envs=1)
-    env = make_vec_env(lambda: gym.wrappers.TimeLimit(ContinuousCartPoleEnv(), max_episode_steps=500))
+    env = create_env(environment)
     teacher = teacher_model.load(teacher_path)
 
     return env, teacher
@@ -442,40 +443,3 @@ def get_advantage_weights(
     adv = adv_t.detach().cpu().numpy()
     adv = np.squeeze(adv)
     return adv
-
-    # print("===states===")
-    # print(states_t)
-
-    # print("===actions===")
-    # print(actions_t)
-
-    # print("===rewards===")
-    # print(rewards)
-
-    # print("===nextstates===")
-    # print(next_states_t)
-    
-    # weights = np.array([np.sqrt(score[2]) for score in dataset])
-    
-    # if isinstance(expert, PPO): # For RL algorithms without Q-values 
-
-    #     # For policy gradient methods we use the max entropy formulation
-    #     # to get Q(s, a) \approx log pi(a|s)
-    #     # See Ziebart et al. 2008
-    #     # assert isinstance(env.action_space,
-    #     #                   gym.spaces.Discrete), "Only discrete action spaces supported for loss function"
-    #     # possible_actions = np.arange(env.action_space.n)
-
-    #     possible_actions = np.arange(2)
-
-    #     obs = torch.from_numpy(obs).to("cuda")
-    #     log_probs = []
-    #     for action in possible_actions:
-    #         action = torch.from_numpy(np.array([action])).repeat(obs.shape[0]).to("cuda")
-    #         _, log_prob, _ = model.policy.evaluate_actions(obs, action)
-    #         log_probs.append(log_prob.cpu().detach().numpy().flatten())
-
-    #     log_probs = np.array(log_probs).T
-    #     return log_probs.max(axis=1) - log_probs.min(axis=1)
-
-    # raise NotImplementedError(f"Model type {type(model)} not supported")
