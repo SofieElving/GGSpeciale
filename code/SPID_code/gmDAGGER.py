@@ -142,6 +142,9 @@ def train_spid(teacher_path,
         y = dataset[1]
         advs = dataset[2]
 
+        print(y)
+        print(advs)
+
         weights = np.abs(advs)
         weights = weights / np.max(weights) if np.max(weights) > 0 else weights
 
