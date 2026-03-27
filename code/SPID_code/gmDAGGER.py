@@ -270,6 +270,13 @@ def sample_trajectory(teacher_path, teacher_model, environment, total_timesteps,
         else:
             oracle_action, _states = teacher.predict(obs, deterministic=True)
 
+        # Normalize policy action for Gym Pendulum / VecEnv
+        action = np.asarray(action, dtype=np.float32)
+        if action.ndim == 0:
+            action = action.reshape(1, 1)
+        elif action.ndim == 1:
+            action = action.reshape(1, -1)
+
         next_obs, reward, done, _ = env.step(action)
         
         # flatten if needed
