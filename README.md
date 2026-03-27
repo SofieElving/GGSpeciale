@@ -24,4 +24,5 @@ conda create -n thesis-env -c conda-forge python=3.10 pip numpy pandas tqdm ipyk
 conda activate thesis-env
 pip install torch stable-baselines3 sb3-contrib
 pip install pysr
+pip install "gymnasium[mujoco]"
 ```
