@@ -1,4 +1,5 @@
 import warnings
+from pysr import PySRRegressor 
 import gymnasium as gym
 import numpy as np
 import torch
@@ -6,7 +7,6 @@ from sklearn.tree import DecisionTreeClassifier
 from stable_baselines3 import DQN, PPO, DDPG
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.env_util import make_vec_env
-from pysr import PySRRegressor 
 from SPID_code.PySRWrapper import PySRWrapper
 
 from baseline_code.baseline_enviroments.cartpole_env import ContinuousCartPoleEnv
