@@ -1,0 +1,10 @@
+{
+  "teacher": "DDPG_cartpole.zip",
+  "algorithm": "DDPG",
+  "status": "success",
+  "teacher_path": "/home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/baseline_code/baseline_models/cartpole/DDPG_cartpole.zip",
+  "run_dir": "/home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_GMDAgger_models/DDPG_cartpole",
+  "best_reward_during_search": 39.4,
+  "best_iteration": 1,
+  "n_rewards_logged": 5
+}

@@ -1,0 +1,10 @@
+{
+  "teacher": "TD3_cartpole.zip",
+  "algorithm": "TD3",
+  "status": "success",
+  "teacher_path": "/home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/baseline_code/baseline_models/cartpole/TD3_cartpole.zip",
+  "run_dir": "/home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_models/TD3_cartpole",
+  "best_reward_during_search": 500.0,
+  "best_iteration": 1,
+  "n_rewards_logged": 5
+}

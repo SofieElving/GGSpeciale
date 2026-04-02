@@ -1,0 +1,10 @@
+{
+  "teacher": "PPO_cartpole.zip",
+  "algorithm": "PPO",
+  "status": "success",
+  "teacher_path": "/home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/baseline_code/baseline_models/cartpole/PPO_cartpole.zip",
+  "run_dir": "/home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_models/PPO_cartpole",
+  "best_reward_during_search": 500.0,
+  "best_iteration": 2,
+  "n_rewards_logged": 5
+}
