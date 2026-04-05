@@ -10,10 +10,15 @@ from tqdm import tqdm
 from pysr import PySRRegressor
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.evaluation import evaluate_policy
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+from stable_baselines3.common.monitor import Monitor
 from stable_baselines3 import PPO, SAC, TD3, A2C, DDPG
 from sb3_contrib import TRPO, TQC, ARS, CrossQ
 
-from PySRWrapper import PySRWrapper
+from huggingface_hub import hf_hub_download
+from huggingface_sb3 import load_from_hub
+
+from PySRWrapper import PySRPolicy
 
 import sys
 import os
@@ -23,23 +28,66 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import torch
 
-
-def create_env(environment, env_kwargs=None):
+def make_env(environment, env_kwargs=None):
     env_kwargs = env_kwargs or {}
 
-    if isinstance(environment, str):
-        # Gymnasium registered env
-        return make_vec_env(environment, n_envs=1, env_kwargs=env_kwargs)
+    def _init():
+        return Monitor(gym.make(environment, **env_kwargs))
 
-    elif callable(environment):
-        # function or class (e.g. ContinuousCartPoleEnv)
-        return make_vec_env(environment, n_envs=1, env_kwargs=env_kwargs)
+    return _init
 
-    else:
+
+def create_env(environment, hf_repo_id=None, vecnormalize_path=None, env_kwargs=None):
+    env_kwargs = env_kwargs or {}
+
+    try:
+        # Load normalized environment from Hugging Face if requested
+        if hf_repo_id is not None and vecnormalize_path is not None:
+            print("Loading normalized env from Hugging Face")
+            vecnorm_file = hf_hub_download(
+                repo_id=hf_repo_id,
+                filename=vecnormalize_path,
+            )
+
+            env = DummyVecEnv([make_env(environment, env_kwargs)])
+            env = VecNormalize.load(vecnorm_file, env)
+            env.training = False
+            env.norm_reward = False
+
+        else:
+            # Plain non-normalized vectorized env
+            env = make_vec_env(
+                environment,
+                n_envs=1,
+                env_kwargs=env_kwargs,
+                monitor_dir=None,
+            )
+
+        return env
+
+    except Exception as e:
+        print(e)
         raise ValueError(
-            f"Unsupported environment type: {type(environment)}. "
-            "Must be str, callable, or env class."
+            f"Could not create environment '{environment}'. "
+            f"Original error: {e}"
         )
+
+def get_algo_class(algo_name: str):
+    algo_name = algo_name.lower()
+    algo_map = {
+        "ppo": PPO,
+        "sac": SAC,
+        "td3": TD3,
+        "a2c": A2C,
+        "ddpg": DDPG,
+        "trpo": TRPO,
+        "tqc": TQC,
+        "ars": ARS,
+        "crossq": CrossQ,
+    }
+    if algo_name not in algo_map:
+        raise ValueError(f"Unsupported algorithm: {algo_name}")
+    return algo_map[algo_name]
 
 def create_run_folder(save_folder_path):
     """
@@ -93,15 +141,22 @@ def save_final_results_json(path, teacher_metrics, student_metrics, best_iterati
         json.dump(payload, f, indent=2)
 
 
-def train_spid(teacher_path, 
-               teacher_model,
-               save_folder_path, 
-               environment, 
-               n_iter, 
-               total_timesteps, 
-               save_results=False, 
-               verbose=1,
-                n_eval_episodes=100):
+def train_spid(
+        teacher_path,
+        teacher_model,
+        save_folder_path,
+        environment,
+        n_iter,
+        total_timesteps,
+        save_results=False,
+        verbose=1,
+        n_eval_episodes=100,
+        final_n_val_episodes=100,
+        hf_repo_id=None,
+        hf_filename=None,
+        hf_algo=None,
+        vecnormalize_path=None
+    ):
     
     # print(f"Training SPID on {env_name}")
 
@@ -117,27 +172,34 @@ def train_spid(teacher_path,
     for i in tqdm(range(n_iter), disable=verbose > 0):
         beta = 1 if i == 0 else 0.5
 
-        new_data = sample_trajectory(teacher_path, 
-                                     teacher_model, 
-                                     environment, 
-                                     total_timesteps, 
-                                     n_iter, 
-                                     policy, 
-                                     beta)
+        new_data = sample_trajectory(
+                teacher_path,
+                teacher_model,
+                environment,
+                total_timesteps,
+                n_iter,
+                policy,
+                beta,
+                hf_repo_id=hf_repo_id,
+                hf_filename=hf_filename,
+                hf_algo=hf_algo,
+                vecnormalize_path=vecnormalize_path,
+            )
+        
         if not dataset:
             dataset = new_data.copy()
         else: 
             dataset = [np.concatenate((x, y), axis=0) for x, y in zip(dataset, new_data)]
  
-        srr = PySRRegressor(binary_operators=["+", "*", "-"], 
-                            verbosity=0, 
-                            maxsize=12, 
-                            temp_equation_file=False,
-                            delete_tempfiles=True,
-                            output_jax_format=False,
-                            output_torch_format=False,
-                            elementwise_loss=loss_str
-                            )
+        # srr = PySRRegressor(binary_operators=["+", "*", "-"], 
+        #                     verbosity=0, 
+        #                     maxsize=12, 
+        #                     temp_equation_file=False,
+        #                     delete_tempfiles=True,
+        #                     output_jax_format=False,
+        #                     output_torch_format=False,
+        #                     elementwise_loss=loss_str
+        #                     )
         x = dataset[0]
         y = dataset[1]
         advs = dataset[2]
@@ -145,21 +207,51 @@ def train_spid(teacher_path,
         weights = np.abs(advs)
         weights = weights / np.max(weights) if np.max(weights) > 0 else weights
 
-        srr.fit(x, y, weights=weights)
-        print(f"ready to train")
+        env = create_env(environment, hf_repo_id, vecnormalize_path)
+        srr_test = PySRPolicy(env, 
+                              binary_operators=["+", "*", "-", "/"],
+                              #populations=64, 
+                              maxsize=18, 
+                              #niterations=100, 
+                              verbosity=0, 
+                              temp_equation_file=False,
+                              delete_tempfiles=True,
+                              output_jax_format=False,
+                              output_torch_format=False,
+                              elementwise_loss=loss_str, 
+                              progress=True,
+                              input_stream='devnull')
+        
+        print("training")
+        srr_test.fit(x, y, weights=weights)
+
+        #srr.fit(x, y, weights=weights)
         # srr.fit(x, y)
 
-        policies.append(srr)
-        policy = srr
+        # policies.append(srr)
+        # policy = srr
 
-        print(f"about to evaluate")
-        eval_env = create_env(environment)
+        # print(f"about to evaluate")
+        # eval_env = create_env(environment)
+        # mean_reward, std_reward = evaluate_policy(
+        #     PySRWrapper(policy),
+        #     eval_env,
+        #     n_eval_episodes=n_eval_episodes,
+        #     deterministic=True,
+        # )
+
+        policies.append(srr_test)
+        policy = srr_test
+
+        print(f"Evaluating trained model")
+        eval_env = create_env(environment, hf_repo_id, vecnormalize_path)
         mean_reward, std_reward = evaluate_policy(
-            PySRWrapper(policy),
+            srr_test,
             eval_env,
             n_eval_episodes=n_eval_episodes,
             deterministic=True,
         )
+
         eval_env.close()
 
         rewards.append(float(mean_reward))
@@ -168,7 +260,7 @@ def train_spid(teacher_path,
 
     best_idx = int(np.argmax(rewards))
     best_policy = policies[best_idx]
-    best_wrapper = PySRWrapper(best_policy)
+    best_wrapper = best_policy
 
     # Save best symbolic policy
     best_policy_path = run_dir / "best_student_policy.joblib"
@@ -180,22 +272,31 @@ def train_spid(teacher_path,
         save_iteration_summary_csv(rewards, run_dir / "summary.csv")
 
     # Evaluate teacher
-    teacher = teacher_model.load(teacher_path)
-    teacher_eval_env = create_env(environment)
+    teacher_eval_env, teacher = load_teacher_env(
+        teacher_path,
+        teacher_model,
+        environment,
+        hf_repo_id=hf_repo_id,
+        hf_filename=hf_filename,
+        hf_algo=hf_algo,
+        vecnormalize_path=vecnormalize_path
+    )
+    #teacher = teacher_model.load(teacher_path)
+    #teacher_eval_env = create_env(environment)
     teacher_mean_reward, teacher_std_reward = evaluate_policy(
         teacher,
         teacher_eval_env,
-        n_eval_episodes=n_eval_episodes,
+        n_eval_episodes=final_n_val_episodes,
         deterministic=True,
     )
     teacher_eval_env.close()
 
     # Evaluate best student
-    student_eval_env = create_env(environment)
+    student_eval_env = create_env(environment, hf_repo_id, vecnormalize_path)
     student_mean_reward, student_std_reward = evaluate_policy(
         best_wrapper,
         student_eval_env,
-        n_eval_episodes=n_eval_episodes,
+        n_eval_episodes=final_n_val_episodes,
         deterministic=True,
     )
     student_eval_env.close()
@@ -228,20 +329,78 @@ def train_spid(teacher_path,
     return rewards, best_policy, best_wrapper, run_dir
 
 
-def load_teacher_env(teacher_path, teacher_model, environment):
-    env = create_env(environment)
-    teacher = teacher_model.load(teacher_path)
-
-    return env, teacher
 
 
 
-def sample_trajectory(teacher_path, teacher_model, environment, total_timesteps, n_iter, policy, beta):
-    # We create a new environment for each viper step since
+
+def load_teacher_env(
+    teacher_path,
+    teacher_model,
+    environment,
+    hf_repo_id=None,
+    hf_filename=None,
+    hf_algo=None,
+    vecnormalize_path=None
+):    
+    env = create_env(environment, hf_repo_id=hf_repo_id, vecnormalize_path=vecnormalize_path)
+
+    if teacher_path is not None:
+        try:
+            teacher = teacher_model.load(teacher_path)
+            print(f"Loaded local teacher from: {teacher_path}")
+            return env, teacher
+        except Exception as e:
+            print(f"Local load failed: {e}")
+
+    if hf_repo_id is not None and hf_filename is not None:
+        try:
+            algo_class = get_algo_class(hf_algo) if hf_algo is not None else teacher_model
+
+            checkpoint_path = load_from_hub(
+                repo_id=hf_repo_id,
+                filename=hf_filename,
+            )
+
+            teacher = algo_class.load(checkpoint_path)
+            print(f"Loaded Hugging Face teacher from: {hf_repo_id}/{hf_filename}")
+            return env, teacher
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to load teacher from Hugging Face repo '{hf_repo_id}' "
+                f"with filename '{hf_filename}': {e}"
+            )
+
+    raise FileNotFoundError(
+        "Could not load teacher model. Provide either a valid local teacher_path "
+        "or Hugging Face repo_id + filename."
+    )
+
+
+
+def sample_trajectory(
+        teacher_path,
+        teacher_model,
+        environment,
+        total_timesteps,
+        n_iter,
+        policy,
+        beta,
+        hf_repo_id=None,
+        hf_filename=None,
+        hf_algo=None,
+        vecnormalize_path=None,
+    ):
+    # We create a new environment for each step since
     # vectorized stable baseline environments can only be reset once
-    env, teacher = load_teacher_env(teacher_path, 
-                                   teacher_model, 
-                                   environment)
+    env, teacher = load_teacher_env(
+        teacher_path,
+        teacher_model,
+        environment,
+        hf_repo_id=hf_repo_id,
+        hf_filename=hf_filename,
+        hf_algo=hf_algo,
+        vecnormalize_path=vecnormalize_path
+    )
     policy = policy or teacher
 
     trajectory = []
@@ -256,26 +415,29 @@ def sample_trajectory(teacher_path, teacher_model, environment, total_timesteps,
     rewards = []
     next_states = []
 
+    # status counter 
+    pysr_actions = 0
+    oracle_actions = 0
+
     while len(states) < n_steps:
         
         active_policy = [policy, teacher][np.random.binomial(1, beta)]
 
-        if isinstance(active_policy, PySRRegressor):
-            action = active_policy.predict(obs)
+        if isinstance(active_policy, PySRPolicy):
+            action, _states = active_policy.predict(obs)
+            pysr_actions += 1
         else:
             action, _states = active_policy.predict(obs, deterministic=True)
-        
-        if not isinstance(active_policy, PySRRegressor):
-            oracle_action = action.copy()
-        else:
-            oracle_action, _states = teacher.predict(obs, deterministic=True)
+            oracle_actions += 1
+
+        oracle_action, _states = teacher.predict(obs, deterministic=True)
 
         # Normalize policy action for Gym Pendulum / VecEnv
-        action = np.asarray(action, dtype=np.float32)
-        if action.ndim == 0:
-            action = action.reshape(1, 1)
-        elif action.ndim == 1:
-            action = action.reshape(1, -1)
+        # action = np.asarray(action, dtype=np.float32)
+        # if action.ndim == 0:
+        #     action = action.reshape(1, 1)
+        # elif action.ndim == 1:
+        #     action = action.reshape(1, -1)
 
         next_obs, reward, done, _ = env.step(action)
         
