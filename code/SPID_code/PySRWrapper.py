@@ -11,21 +11,13 @@ class PySRWrapper:
     def __init__(self, sr: PySRRegressor):
         self.sr = sr
 
-    # def predict(
-    #         self,
-    #         observation: np.ndarray,
-    #         state: Optional[Tuple[np.ndarray, ...]] = None,
-    #         episode_start: Optional[np.ndarray] = None,
-    #         deterministic: bool = False,
-    # ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
-    #     return self.sr.predict(observation), None
-
-    
     def predict(self, obs, state=None, episode_start=None, deterministic=True):
         a = self.sr.predict(obs)  # could be (n_envs,) or scalar
         a = np.asarray(a, dtype=np.float32).reshape(-1, 1)  # (n_envs, 1)
-        a = np.clip(a, -1.0, 1.0)
-        return a, state
+        return a
+    
+    def fit(self, x, y, weights=None):
+        self.sr.fit(x, y, weights=weights)
 
     @classmethod
     def load(cls, path: str):
@@ -38,11 +30,51 @@ class PySRWrapper:
     def print_info(self):
         # TODO: implement info print here. Complexity....
         print("Ain't been done")
-        # print(f"Max depth:\t{self..get_depth()}")
-        # print(f"# Leaves:\t{self.tree.get_n_leaves()}")
         print(self.sr)
 
+class PySRPolicy:
+    def __init__(self, env, **kwargs):
+        self.shape = env.action_space.shape[0]
 
+        self.policy_list = [
+            PySRWrapper(PySRRegressor(**kwargs))
+            for _ in range(self.shape)
+        ]
+
+    def predict(self, obs, state=None, episode_start=None, deterministic=True):
+        obs = np.asarray(obs)
+
+        # Ensure obs is 2D: (n_envs, obs_dim)
+        if obs.ndim == 1:
+            obs = obs.reshape(1, -1)
+
+        preds = []
+        for policy in self.policy_list:
+            p = policy.predict(obs)
+            p = np.asarray(p).reshape(-1)   # force shape (n_envs,)
+            preds.append(p)
+
+        # Stack into shape (n_envs, action_dim)
+        actions = np.stack(preds, axis=1)
+
+        return actions, state
+
+    def fit(self, x, y, weights=None):
+        for policy, actions in zip(self.policy_list, y.T):
+            policy.fit(x, actions, weights)
+
+    def print_info(self):
+        # TODO: print model summary
+        pass
+
+    def save(self, path):
+        # TODO: figure out how to save (and load) model correctly, such that it is each to reload and use
+        # Potentially just do as above, and save model as a PySRPolicy class??
+        dump(self, path)
+
+    def load(self, path):
+        policy = load(path)
+        return policy
 
 
 # import numpy as np
