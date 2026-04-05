@@ -15,7 +15,8 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3 import PPO, SAC, TD3, A2C, DDPG
 from sb3_contrib import TRPO, TQC, ARS, CrossQ
 
-from huggingface_hub import hf_hub_download, load_from_hub
+from huggingface_hub import hf_hub_download
+from huggingface_sb3 import load_from_hub
 
 from PySRWrapper import PySRPolicy
 
@@ -27,16 +28,48 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import torch
 
-
-def create_env(environment, env_kwargs=None):
+def make_env(environment, env_kwargs=None):
     env_kwargs = env_kwargs or {}
+
+    def _init():
+        return Monitor(gym.make(environment, **env_kwargs))
+
+    return _init
+
+
+def create_env(environment, hf_repo_id=None, vecnormalize_path=None, env_kwargs=None):
+    env_kwargs = env_kwargs or {}
+
     try:
-        return make_vec_env(environment, n_envs=1, env_kwargs=env_kwargs)
+        # Load normalized environment from Hugging Face if requested
+        if hf_repo_id is not None and vecnormalize_path is not None:
+            print("Loading normalized env from Hugging Face")
+            vecnorm_file = hf_hub_download(
+                repo_id=hf_repo_id,
+                filename=vecnormalize_path,
+            )
+
+            env = DummyVecEnv([make_env(environment, env_kwargs)])
+            env = VecNormalize.load(vecnorm_file, env)
+            env.training = False
+            env.norm_reward = False
+
+        else:
+            # Plain non-normalized vectorized env
+            env = make_vec_env(
+                environment,
+                n_envs=1,
+                env_kwargs=env_kwargs,
+                monitor_dir=None,
+            )
+
+        return env
+
     except Exception as e:
         print(e)
         raise ValueError(
-            f"Unsupported environment type: {type(environment)}. "
-            "Must be str, callable, or env class."
+            f"Could not create environment '{environment}'. "
+            f"Original error: {e}"
         )
 
 def get_algo_class(algo_name: str):
@@ -174,7 +207,7 @@ def train_spid(
         weights = np.abs(advs)
         weights = weights / np.max(weights) if np.max(weights) > 0 else weights
 
-        env = create_env(environment)
+        env = create_env(environment, hf_repo_id, vecnormalize_path)
         srr_test = PySRPolicy(env, 
                               binary_operators=["+", "*", "-", "/"],
                               #populations=64, 
@@ -211,7 +244,7 @@ def train_spid(
         policy = srr_test
 
         print(f"Evaluating trained model")
-        eval_env = create_env(environment)
+        eval_env = create_env(environment, hf_repo_id, vecnormalize_path)
         mean_reward, std_reward = evaluate_policy(
             srr_test,
             eval_env,
@@ -245,7 +278,8 @@ def train_spid(
         environment,
         hf_repo_id=hf_repo_id,
         hf_filename=hf_filename,
-        hf_algo=hf_algo
+        hf_algo=hf_algo,
+        vecnormalize_path=vecnormalize_path
     )
     #teacher = teacher_model.load(teacher_path)
     #teacher_eval_env = create_env(environment)
@@ -258,7 +292,7 @@ def train_spid(
     teacher_eval_env.close()
 
     # Evaluate best student
-    student_eval_env = create_env(environment)
+    student_eval_env = create_env(environment, hf_repo_id, vecnormalize_path)
     student_mean_reward, student_std_reward = evaluate_policy(
         best_wrapper,
         student_eval_env,
@@ -296,8 +330,7 @@ def train_spid(
 
 
 
-def make_env():
-    return Monitor(gym.make("MountainCarContinuous-v0"))
+
 
 
 def load_teacher_env(
@@ -309,16 +342,7 @@ def load_teacher_env(
     hf_algo=None,
     vecnormalize_path=None
 ):    
-
-    if vecnormalize_path is not None:
-        vecnorm_path = hf_hub_download(repo_id=hf_repo_id, filename=vecnormalize_path)
-
-        env = DummyVecEnv([make_env])
-        env = VecNormalize.load(vecnorm_path, env)
-        env.training = False
-        env.norm_reward = False
-    else: 
-        env = create_env(environment)
+    env = create_env(environment, hf_repo_id=hf_repo_id, vecnormalize_path=vecnormalize_path)
 
     if teacher_path is not None:
         try:
