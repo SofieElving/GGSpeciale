@@ -27,6 +27,39 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
 import torch
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message="Could not deserialize object learning_rate"
+)
+
+warnings.filterwarnings(
+    "ignore",
+    message="You loaded a model that was trained using OpenAI Gym"
+)
+
+warnings.filterwarnings(
+    "ignore",
+    message="Could not deserialize object clip_range",
+    module="stable_baselines3.common.save_util"
+)
+
+warnings.filterwarnings(
+    "ignore",
+    message="Could not deserialize object lr_schedule"
+)
+
+warnings.filterwarnings(
+    "ignore",
+    message="You are trying to run PPO on the GPU"
+)
+
+warnings.filterwarnings(
+    "ignore",
+    message="Note: it looks like you are running in Jupyter"
+)
+
 
 def make_env(environment, env_kwargs=None):
     env_kwargs = env_kwargs or {}
