@@ -1,3 +1,0 @@
-policy,mean_reward,std_reward
-teacher,500.0,0.0
-student_best,500.0,0.0

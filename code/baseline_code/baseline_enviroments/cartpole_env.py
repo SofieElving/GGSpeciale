@@ -1,6 +1,7 @@
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
+import math
 
 
 # class ContinuousCartPole(gym.Wrapper):
@@ -44,10 +45,8 @@ from gymnasium import spaces
 #     return ContinuousCartPole(env)
 
 
-import math
-import numpy as np
-import gymnasium as gym
-from gymnasium import spaces
+
+
 
 class ContinuousCartPoleEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 50}
