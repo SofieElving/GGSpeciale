@@ -26,3 +26,24 @@ pip install torch stable-baselines3 sb3-contrib
 pip install pysr
 pip install "gymnasium[mujoco]"
 ```
+
+
+# Installing the PyBullet Drones env.
+
+To do *locally*, simply navigate to where you want the repository to be in the terminal, and do: 
+```
+git clone https://github.com/utiasDSL/gym-pybullet-drones.git
+cd gym-pybullet-drones
+pip install -e .
+```
+I have already cloned the repository to git, so simply navigate to the repo and do:
+```
+cd gym-pybullet-drones
+pip install -e .
+```
+Lasty, you will need the following dependencies to run the environment 
+```
+pip install pybullet gymnasium stable-baselines3 numpy
+pip install matplotlib opencv-python
+```
+
