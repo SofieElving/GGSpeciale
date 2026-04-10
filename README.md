@@ -45,6 +45,6 @@ Lastly, you will need the following dependencies to run the environment
 ```
 pip install pybullet
 pip install matplotlib opencv-python
-pip install setuptools
+pip install "setuptools<82"
 ```
 
