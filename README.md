@@ -41,9 +41,10 @@ I have already cloned the repository to git, so simply navigate to the repo and 
 cd gym-pybullet-drones
 pip install -e .
 ```
-Lasty, you will need the following dependencies to run the environment 
+Lastly, you will need the following dependencies to run the environment 
 ```
 pip install pybullet gymnasium stable-baselines3 numpy
 pip install matplotlib opencv-python
+pip install setuptools
 ```
 
