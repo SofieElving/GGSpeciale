@@ -43,7 +43,7 @@ pip install -e .
 ```
 Lastly, you will need the following dependencies to run the environment 
 ```
-pip install pybullet gymnasium stable-baselines3 numpy
+pip install pybullet
 pip install matplotlib opencv-python
 pip install setuptools
 ```
