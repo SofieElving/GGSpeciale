@@ -45,8 +45,13 @@ class PySRPolicy:
         obs = np.asarray(obs)
 
         # Ensure obs is 2D: (n_envs, obs_dim)
+        # if obs.ndim == 1:
+        #     obs = obs.reshape(1, -1)
+        
         if obs.ndim == 1:
             obs = obs.reshape(1, -1)
+        elif obs.ndim > 2:
+            obs = obs.reshape(obs.shape[0], -1)
 
         preds = []
         for policy in self.policy_list:

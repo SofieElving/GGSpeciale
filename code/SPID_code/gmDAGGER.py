@@ -224,15 +224,6 @@ def train_spid(
         else: 
             dataset = [np.concatenate((x, y), axis=0) for x, y in zip(dataset, new_data)]
  
-        # srr = PySRRegressor(binary_operators=["+", "*", "-"], 
-        #                     verbosity=0, 
-        #                     maxsize=12, 
-        #                     temp_equation_file=False,
-        #                     delete_tempfiles=True,
-        #                     output_jax_format=False,
-        #                     output_torch_format=False,
-        #                     elementwise_loss=loss_str
-        #                     )
         x = dataset[0]
         y = dataset[1]
         advs = dataset[2]
@@ -258,20 +249,6 @@ def train_spid(
         print("training")
         srr_test.fit(x, y, weights=weights)
 
-        #srr.fit(x, y, weights=weights)
-        # srr.fit(x, y)
-
-        # policies.append(srr)
-        # policy = srr
-
-        # print(f"about to evaluate")
-        # eval_env = create_env(environment)
-        # mean_reward, std_reward = evaluate_policy(
-        #     PySRWrapper(policy),
-        #     eval_env,
-        #     n_eval_episodes=n_eval_episodes,
-        #     deterministic=True,
-        # )
 
         policies.append(srr_test)
         policy = srr_test
@@ -314,8 +291,7 @@ def train_spid(
         hf_algo=hf_algo,
         vecnormalize_path=vecnormalize_path
     )
-    #teacher = teacher_model.load(teacher_path)
-    #teacher_eval_env = create_env(environment)
+
     teacher_mean_reward, teacher_std_reward = evaluate_policy(
         teacher,
         teacher_eval_env,
