@@ -194,6 +194,7 @@ def train_spid(
     # print(f"Training SPID on {env_name}")
 
     loss_str = "loss(pred, target, w) = w .* (pred .- target).^2"
+    loss_str = "loss(pred, target) = (pred .- target).^2"
 
     dataset = []
     policy = None
@@ -246,8 +247,11 @@ def train_spid(
                               progress=True,
                               input_stream='devnull')
         
+        # print("training")
+        # srr_test.fit(x, y, weights=weights)
+
         print("training")
-        srr_test.fit(x, y, weights=weights)
+        srr_test.fit(x, y)
 
 
         policies.append(srr_test)

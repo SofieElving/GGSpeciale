@@ -77,8 +77,9 @@ class PySRPolicy:
         # Potentially just do as above, and save model as a PySRPolicy class??
         dump(self, path)
 
-    def load(self, path):
+    def load(path):
         policy = load(path)
+        print("Policy loaded")
         return policy
 
 
