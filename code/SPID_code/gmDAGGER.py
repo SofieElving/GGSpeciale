@@ -194,7 +194,7 @@ def train_spid(
     # print(f"Training SPID on {env_name}")
 
     loss_str = "loss(pred, target, w) = w .* (pred .- target).^2"
-    loss_str = "loss(pred, target) = (pred .- target).^2"
+    # loss_str = "loss(pred, target) = (pred .- target).^2"
 
     dataset = []
     policy = None
@@ -247,11 +247,11 @@ def train_spid(
                               progress=True,
                               input_stream='devnull')
         
-        # print("training")
-        # srr_test.fit(x, y, weights=weights)
-
         print("training")
-        srr_test.fit(x, y)
+        srr_test.fit(x, y, weights=weights)
+
+        # print("training")
+        # srr_test.fit(x, y)
 
 
         policies.append(srr_test)
@@ -473,6 +473,11 @@ def sample_trajectory(
             obs = env.reset()
     
     print(f"finished collecting trajectories")
+
+    # print("\ntraining actions: ")
+    # print(np.array(training_actions).shape)
+    # print("teacher actions")
+    # print(np.array(teacher_actions).shape)
     
     # Note: advantage is training actions, and L2 loss is teacher actions (?) 
     weights = get_advantage_weights(states, training_actions, rewards, next_states, teacher)

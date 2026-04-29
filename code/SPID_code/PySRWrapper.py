@@ -34,7 +34,8 @@ class PySRWrapper:
 
 class PySRPolicy:
     def __init__(self, env, **kwargs):
-        self.shape = env.action_space.shape[0]
+        #self.shape = env.action_space.shape[0]
+        self.shape = int(np.prod(env.action_space.shape))
 
         self.policy_list = [
             PySRWrapper(PySRRegressor(**kwargs))
@@ -61,7 +62,6 @@ class PySRPolicy:
 
         # Stack into shape (n_envs, action_dim)
         actions = np.stack(preds, axis=1)
-
         return actions, state
 
     def fit(self, x, y, weights=None):
