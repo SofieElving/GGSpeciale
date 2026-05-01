@@ -34,7 +34,8 @@ class PySRWrapper:
 
 class PySRPolicy:
     def __init__(self, env, **kwargs):
-        self.shape = env.action_space.shape[0]
+        #self.shape = env.action_space.shape[0]
+        self.shape = int(np.prod(env.action_space.shape))
 
         self.policy_list = [
             PySRWrapper(PySRRegressor(**kwargs))
@@ -45,8 +46,13 @@ class PySRPolicy:
         obs = np.asarray(obs)
 
         # Ensure obs is 2D: (n_envs, obs_dim)
+        # if obs.ndim == 1:
+        #     obs = obs.reshape(1, -1)
+        
         if obs.ndim == 1:
             obs = obs.reshape(1, -1)
+        elif obs.ndim > 2:
+            obs = obs.reshape(obs.shape[0], -1)
 
         preds = []
         for policy in self.policy_list:
@@ -56,7 +62,6 @@ class PySRPolicy:
 
         # Stack into shape (n_envs, action_dim)
         actions = np.stack(preds, axis=1)
-
         return actions, state
 
     def fit(self, x, y, weights=None):
@@ -72,8 +77,9 @@ class PySRPolicy:
         # Potentially just do as above, and save model as a PySRPolicy class??
         dump(self, path)
 
-    def load(self, path):
+    def load(path):
         policy = load(path)
+        print("Policy loaded")
         return policy
 
 
