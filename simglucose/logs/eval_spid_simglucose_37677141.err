@@ -1,0 +1,13 @@
+/home/elisalaegs/miniforge3/envs/thesis/lib/python3.10/site-packages/gym/envs/registration.py:2: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  import pkg_resources
+2026-05-06 20:11:28.446035: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-05-06 20:11:29.345650: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: SSE4.1 SSE4.2 AVX AVX2 AVX512F AVX512_VNNI AVX512_BF16 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+Traceback (most recent call last):
+  File "/faststorage/project/GGSpeciale/GGSpeciale/simglucose/eval2.py", line 625, in <module>
+    main()
+  File "/faststorage/project/GGSpeciale/GGSpeciale/simglucose/eval2.py", line 527, in main
+    student = joblib.load(student_path)
+  File "/home/elisalaegs/miniforge3/envs/thesis/lib/python3.10/site-packages/joblib/numpy_pickle.py", line 735, in load
+    with open(filename, "rb") as f:
+FileNotFoundError: [Errno 2] No such file or directory: 'distil_singe/best_student_policy.joblib'

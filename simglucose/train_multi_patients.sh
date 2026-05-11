@@ -13,12 +13,12 @@ set -x
 mkdir -p output
 
 python train_sb3_simglucose.py \
-    --patient "adult#010" \
-    --train-patients "adult#001,adult#002,adult#003,adult#004,adult#005,adult#006,adult#007" \
+    --patient "adult#001" \
+    --train-patients "adult#001" \
     --timesteps 3000000 \
     --seed 42 \
     --max-episode-steps 480 \
-    --outdir "./output_test2" \
+    --outdir "./output_test_single" \
     --meals "7:45,12:70,16:15,18:80,23:10" \
     --scenario-mode "fixed_hb" \
     --time-std-multiplier 0.5 \

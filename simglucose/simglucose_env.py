@@ -16,7 +16,7 @@ from meal_scenarios import (
     SemiRandomHarrisonBenedictScenario,
 )
 
-from rewards import glucose_insulin_reward
+from rewards_smooth import glucose_insulin_reward
 
 
 # Default meal schedule in minute-of-day format:
@@ -56,7 +56,7 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         env: gym.Env,
         meal_schedule: Sequence[tuple[int, float]] | Sequence[MealEvent],
         sample_time_min: float = 3.0,
-        warning_window_min: float = 60.0,
+        warning_window_min: float = 20.0,
         insulin_tau_min: float = 55.0,
         cgm_index: int = 0,
         normalize: bool = True,
@@ -281,10 +281,10 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
     #TODO Look into
     def _normalize_obs(self, x: np.ndarray) -> np.ndarray:
         cgm = np.clip(x[0] / 400.0, 0.0, 1.0) # physological range tops at 400 for the measure maching
-        time_since_meal = np.clip(x[1] / 1440.0, 0.0, 1.0)
-        iob = np.clip(x[2] / 10.0, 0.0, 2.0)
+        time_since_meal = np.clip(x[1] / 1440.0, 0.0, 1.0) # 1140 min = 24 hrs
+        iob = np.clip(x[2] / 10.0, 0.0, 2.0) # NOT SURE
         meal_warning = np.clip(x[3], 0.0, 1.0)
-        meal_size = np.clip(x[4] / 100.0, 0.0, 1.0)
+        meal_size = np.clip(x[4] / 30.0, 0.0, 1.0) # CHANGED FROM /1000 BECAUSE MEALS SEEM MUCH SMALLER
 
         return np.array(
             [cgm, time_since_meal, iob, meal_warning, meal_size],
@@ -421,7 +421,7 @@ def make_simglucose_spid_env(
     normalize: bool = True,
     scenario_mode: str = "fixed",
     seed: int | None = None,
-    warning_window_min: float = 60.0,
+    warning_window_min: float = 20.0,
     insulin_tau_min: float = 55.0,
     sample_time_min: float = 3.0,
     time_std_multiplier: float = 1.0,
@@ -483,7 +483,7 @@ class MultiPatientSimglucoseEnv(gym.Env):
         meal_schedule: Sequence[tuple[int, float]] | None = DEFAULT_MEALS,
         scenario_mode: str = "fixed",
         seed: int | None = None,
-        warning_window_min: float = 60.0,
+        warning_window_min: float = 20.0,
         insulin_tau_min: float = 55.0,
         sample_time_min: float = 3.0,
         time_std_multiplier: float = 1.0,

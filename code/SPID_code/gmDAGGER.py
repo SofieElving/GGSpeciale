@@ -233,7 +233,8 @@ def train_spid(
 
         env = create_env(environment, hf_repo_id, vecnormalize_path)
         srr_test = PySRPolicy(env, 
-                              binary_operators=["+", "*", "-", "/"],
+                              binary_operators=["+", "*", "-"],
+                              unary_operators = ["square", "exp", "cos", "sin", "sqrt","log"],
                               #populations=64, 
                               maxsize=18, 
                               #niterations=100, 

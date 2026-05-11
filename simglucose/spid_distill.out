@@ -1,0 +1,401 @@
+Starting SPID distillation
+
+=== DISTILL CONFIG ===
+teacher_model_path: output_random_strict_reward/models/best/best_model.zip
+patients: ['adult#001', 'adult#002', 'adult#003', 'adult#004', 'adult#005', 'adult#006', 'adult#007']
+scenario_mode: semi_random_hb
+max_insulin_action (CLIP): 6.0
+timesteps: 60000
+=====================
+
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 0: student reward = -4185.0911 +/- 2463.8974
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 1: student reward = -19335.3098 +/- 25814.2352
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 2: student reward = -3769.8901 +/- 2344.5646
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 3: student reward = -8778.0394 +/- 16766.0987
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 4: student reward = -8033.1074 +/- 15115.2161
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 5: student reward = -3389.7151 +/- 4477.5028
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 6: student reward = -1031.2262 +/- 2065.6404
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 7: student reward = -3391.8675 +/- 4642.8531
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 8: student reward = -2518.6677 +/- 2170.2322
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 9: student reward = -1867.6555 +/- 2523.6665
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 10: student reward = -21799.9687 +/- 24615.1227
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 11: student reward = -2068.0496 +/- 2854.6450
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 12: student reward = -1846.4897 +/- 2645.7189
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 13: student reward = -1506.7043 +/- 2211.4648
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 14: student reward = -1598.1513 +/- 2374.5932
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 15: student reward = -20725.0486 +/- 22891.9301
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 16: student reward = -1452.9914 +/- 1987.4177
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 17: student reward = -3157.6159 +/- 4522.3068
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 18: student reward = -22028.4550 +/- 25043.5893
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 19: student reward = -4458.4281 +/- 4774.4931
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 20: student reward = -2266.2774 +/- 3341.0380
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 21: student reward = -2516.8656 +/- 2522.8442
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 22: student reward = -21242.6678 +/- 24518.9429
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 23: student reward = -1893.1532 +/- 2456.6728
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 24: student reward = -1510.3185 +/- 1244.2190
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 25: student reward = -1482.8288 +/- 2140.6986
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 26: student reward = -4309.3826 +/- 4223.2451
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 27: student reward = -7832.2913 +/- 5176.9929
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 28: student reward = -2208.0097 +/- 3282.6749
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 29: student reward = -1710.1289 +/- 2909.1627
+Loaded local teacher from: output_random_strict_reward/models/best/best_model.zip
+SPID iteration complete. Dataset size: 3
+Best policy iteration: 6
+Best student reward during search: -1031.2262
+Teacher eval: -5229.3810 +/- 4672.8504
+Student eval: -1166.8094 +/- 2094.9990
+Saved results to: distil_random_strict
+
+Distillation complete.
+Saved to: distil_random_strict
+Done
+
+=== DISTILL CONFIG ===
+teacher_model_path: output_changed_mealnorm/models/best/best_model.zip
+patients: ['adult#008']
+scenario_mode: semi_random_hb
+max_insulin_action (CLIP): 6.0
+timesteps: 60000
+=====================
+
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 0: student reward = -13984.8319 +/- 3050.5726
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 1: student reward = -8244.0767 +/- 9803.3281
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 2: student reward = -5315.9893 +/- 599.1596
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 3: student reward = -13355.9418 +/- 1752.0165
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 4: student reward = -1717.7352 +/- 986.7350
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 5: student reward = -1423.2856 +/- 779.7808
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 6: student reward = -388.7171 +/- 638.7723
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 7: student reward = -1321.4021 +/- 853.2509
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 8: student reward = -402.7452 +/- 383.4384
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 9: student reward = -472.1272 +/- 811.2244
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 10: student reward = -235.5666 +/- 481.7116
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 11: student reward = -5005.9639 +/- 721.9873
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 12: student reward = -1729.9395 +/- 1125.0412
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 13: student reward = -1151.0627 +/- 913.0190
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 14: student reward = -5677.7498 +/- 2582.3056
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 15: student reward = 211.1718 +/- 340.9329
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 16: student reward = -34.4742 +/- 433.3485
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 17: student reward = 254.2076 +/- 184.2759
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 18: student reward = -175.1651 +/- 776.4993
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 19: student reward = -1751.4472 +/- 1095.7145
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 20: student reward = -1486.6352 +/- 1718.0311
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 21: student reward = -1929.8333 +/- 1753.4909
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 22: student reward = -101.0885 +/- 693.3305
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 23: student reward = -420.5269 +/- 876.5575
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 24: student reward = -321.6288 +/- 1065.7173
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 25: student reward = -977.8536 +/- 3569.6280
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 26: student reward = -99.4583 +/- 822.7941
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 27: student reward = -671.9842 +/- 1413.3073
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 28: student reward = -1588.1917 +/- 3713.2566
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+finished collecting trajectories
+computing advantages
+training
+Evaluating trained model
+Iteration 29: student reward = -6241.4015 +/- 2793.9422
+Loaded local teacher from: output_changed_mealnorm/models/best/best_model.zip
+SPID iteration complete. Dataset size: 3
+Best policy iteration: 17
+Best student reward during search: 254.2076
+Teacher eval: -1411.6299 +/- 1092.4761
+Student eval: 230.1618 +/- 406.9829
+Saved results to: distil_single
+
+Distillation complete.
+Saved to: distil_single
+Done

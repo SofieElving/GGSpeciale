@@ -1,0 +1,36 @@
+Evaluation config:
+  teacher_model_path:   output_changed_mealnorm/models/best/best_model.zip
+  student_path:         distil_results_with_div/best_student_policy.joblib
+  scenario_mode:        semi_random_hb
+  use_custom_reward:    True
+  warning_window_min:   20.0
+  max_insulin_action:   6.0
+  time_std_multiplier:  0.5
+  patients:             ['adult#001', 'adult#002', 'adult#003', 'adult#004', 'adult#005', 'adult#006', 'adult#007', 'adult#008', 'adult#009', 'adult#010']
+
+Symbolic equation:
+Symbolic equation not found.
+
+Evaluating patient: adult#001
+
+Evaluating patient: adult#002
+
+Evaluating patient: adult#003
+
+Evaluating patient: adult#004
+
+Evaluating patient: adult#005
+
+Evaluating patient: adult#006
+
+Evaluating patient: adult#007
+
+Evaluating patient: adult#008
+
+Evaluating patient: adult#009
+
+Evaluating patient: adult#010
+
+Saved:
+- eval_spid_results_random/multi_patient_summary.csv
+- one comparison PNG per patient
