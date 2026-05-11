@@ -192,8 +192,9 @@ def train_spid(
     ):
     
     # print(f"Training SPID on {env_name}")
-
     loss_str = "loss(pred, target, w) = w .* (pred .- target).^2"
+    loss_str = "loss(pred, target, w) = w"
+
     # loss_str = "loss(pred, target) = (pred .- target).^2"
 
     dataset = []
@@ -230,11 +231,12 @@ def train_spid(
         advs = dataset[2]
 
         weights = np.abs(advs)
-        weights = weights / np.max(weights) if np.max(weights) > 0 else weights
+        weights = weights / np.max(np.abs(weights)) if np.max(weights) > 0 else weights
 
         env = create_env(environment, hf_repo_id, vecnormalize_path)
         srr_test = PySRPolicy(env, 
                               binary_operators=["+", "*", "-", "/"],
+                              #unary_operators=["cos", "sin", "exp", "square", "sqrt", "log"],
                               #populations=64, 
                               maxsize=18, 
                               #niterations=100, 
@@ -273,8 +275,10 @@ def train_spid(
             print(f"Iteration {i}: student reward = {mean_reward:.4f} +/- {std_reward:.4f}")
 
     best_idx = int(np.argmax(rewards))
-    best_policy = policies[best_idx]
-    best_wrapper = best_policy
+    # best_policy = policies[best_idx]
+    # best_wrapper = best_policy
+
+    best_wrapper = policies[best_idx]
 
     # Save best symbolic policy
     best_policy_path = run_dir / "best_student_policy.joblib"
@@ -339,7 +343,7 @@ def train_spid(
     print(f"Saved results to: {run_dir}")
 
     best_wrapper.print_info()
-    return rewards, best_policy, best_wrapper, run_dir
+    return rewards, best_wrapper, best_wrapper, run_dir
 
 
 
@@ -479,7 +483,7 @@ def sample_trajectory(
     # print("teacher actions")
     # print(np.array(teacher_actions).shape)
     
-    # Note: advantage is training actions, and L2 loss is teacher actions (?) 
+    # Note: advantage is training actions, and L2 loss is teacher actions 
     weights = get_advantage_weights(states, training_actions, rewards, next_states, teacher)
     trajectory = [np.array(states), np.array(teacher_actions), weights]
 
