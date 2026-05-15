@@ -8,12 +8,10 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, EvalCallback
-from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecMonitor
 
 from env import (
     make_simglucose_spid_env,
-    MultiPatientSimglucoseEnv,
     parse_meal_schedule,
     DEFAULT_MEALS,
 )
@@ -22,7 +20,6 @@ from env import (
 @dataclass
 class TrainConfig:
     patient: str
-    train_patients: list[str]
     reward_type: str
     meals: list[tuple[int, float]]
     scenario_mode: str
@@ -45,17 +42,11 @@ class TrainConfig:
     net_arch: list[int]
 
 
-def parse_patient_list(text: str | None) -> list[str]:
-    if text is None or text.strip() == "":
-        return []
-    return [p.strip() for p in text.split(",") if p.strip()]
-
 
 def build_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--patient", type=str, default="adult#010")
-    parser.add_argument("--train-patients", type=str, default="")
 
     parser.add_argument(
         "--reward-type",
@@ -118,45 +109,13 @@ def make_env_fn(
             include_snacks=include_snacks,
             reward_type=reward_type,
         )
-        env = Monitor(env)
-        env.reset(seed=seed)
-        print("Action space:", env.action_space)
-        env.action_space.seed(seed)
+       # env.reset(seed=seed) #remove seed pr. ep
+        env.reset()
+      #  env.action_space.seed(seed)
         return env
 
     return _init
 
-
-def make_multi_patient_env_fn(
-    env_id: str,
-    patients: list[str],
-    meals: list[tuple[int, float]],
-    max_episode_steps: int,
-    seed: int,
-    scenario_mode: str,
-    time_std_multiplier: float,
-    include_snacks: bool,
-    reward_type: str,
-):
-    def _init():
-        env = MultiPatientSimglucoseEnv(
-            patient_names=patients,
-            env_id=env_id,
-            max_episode_steps=max_episode_steps,
-            normalize=True,
-            meal_schedule=meals,
-            scenario_mode=scenario_mode,
-            seed=seed,
-            time_std_multiplier=time_std_multiplier,
-            include_snacks=include_snacks,
-            reward_type=reward_type,
-        )
-        env = Monitor(env)
-        env.reset(seed=seed)
-        env.action_space.seed(seed)
-        return env
-
-    return _init
 
 
 class SimglucoseProgressPlotCallback(BaseCallback):
@@ -276,12 +235,10 @@ def main() -> None:
     args = build_argparser().parse_args()
 
     meals = parse_meal_schedule(args.meals, DEFAULT_MEALS)
-    train_patients = parse_patient_list(args.train_patients)
     net_arch = [int(x) for x in args.net_arch.split(",") if x.strip()]
 
     config = TrainConfig(
         patient=args.patient,
-        train_patients=train_patients,
         reward_type=args.reward_type,
         meals=meals,
         scenario_mode=args.scenario_mode,
@@ -313,34 +270,20 @@ def main() -> None:
     with open(outdir / "train_config.json", "w", encoding="utf-8") as f:
         json.dump(asdict(config), f, indent=2)
 
-    if len(config.train_patients) > 0:
-        train_env = DummyVecEnv([
-            make_multi_patient_env_fn(
-                env_id="simglucose-spid-train-v0",
-                patients=config.train_patients,
-                meals=config.meals,
-                max_episode_steps=config.max_episode_steps,
-                seed=config.seed,
-                scenario_mode=config.scenario_mode,
-                time_std_multiplier=config.time_std_multiplier,
-                include_snacks=config.include_snacks,
-                reward_type=config.reward_type,
-            )
-        ])
-    else:
-        train_env = DummyVecEnv([
-            make_env_fn(
-                env_id="simglucose-spid-train-v0",
-                patient=config.patient,
-                meals=config.meals,
-                max_episode_steps=config.max_episode_steps,
-                seed=config.seed,
-                scenario_mode=config.scenario_mode,
-                time_std_multiplier=config.time_std_multiplier,
-                include_snacks=config.include_snacks,
-                reward_type=config.reward_type,
-            )
-        ])
+
+    train_env = DummyVecEnv([
+        make_env_fn(
+            env_id="simglucose-spid-train-v0",
+            patient=config.patient,
+            meals=config.meals,
+            max_episode_steps=config.max_episode_steps,
+            seed=config.seed,
+            scenario_mode=config.scenario_mode,
+            time_std_multiplier=config.time_std_multiplier,
+            include_snacks=config.include_snacks,
+            reward_type=config.reward_type,
+        )
+    ])
 
     train_env = VecMonitor(train_env)
 
@@ -383,7 +326,7 @@ def main() -> None:
             patient=config.patient,
             meals=config.meals,
             max_episode_steps=config.max_episode_steps,
-            seed=config.seed + 20_000,
+            seed= None,
             scenario_mode=config.scenario_mode,
             time_std_multiplier=config.time_std_multiplier,
             include_snacks=config.include_snacks,

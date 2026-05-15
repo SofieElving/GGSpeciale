@@ -189,3 +189,56 @@ class SemiRandomHarrisonBenedictScenario(Scenario):
 
     def get_meal_schedule(self) -> list[tuple[int, float]]:
         return list(zip(self.scenario["meal"]["time"], self.scenario["meal"]["amount"]))
+
+DEFAULT_MEALS = [
+    (7 * 60, 45.0),
+    (12 * 60, 70.0),
+    (16 * 60, 15.0),
+    (18 * 60, 80.0),
+    (23 * 60, 10.0),
+]
+
+
+def parse_meal_schedule(
+    text: str | None,
+    default: list[tuple[int, float]] = DEFAULT_MEALS,
+) -> list[tuple[int, float]]:
+    """
+    Parses:
+        "7:45,12:70,16:15,18:80,23:10"
+
+    Meaning:
+        hour:grams_carbohydrate
+
+    Returns:
+        [(420, 45.0), (720, 70.0), ...]
+    """
+    if not text:
+        return [(int(minute), float(carbs)) for minute, carbs in default]
+
+    meals: list[tuple[int, float]] = []
+
+    for item in text.split(","):
+        hour_str, carbs_str = item.strip().split(":")
+        meals.append((int(hour_str) * 60, float(carbs_str)))
+
+    return meals
+
+
+def hb_fixed_meal_schedule(patient_name: str) -> list[tuple[int, float]]:
+    """
+    Fixed meal times with patient-specific Harris-Benedict meal sizes.
+
+    Times are minute-of-day.
+    Amounts are grams carbohydrate.
+    """
+    bw, age, kind = get_patient_bw_and_kind(patient_name)
+    b, l, d, s = harris_benedict(bw, age, kind)
+
+    return [
+        (7 * 60, float(round(b))),    # breakfast
+        (12 * 60, float(round(l))),   # lunch
+        (16 * 60, float(round(s))),   # snack
+        (18 * 60, float(round(d))),   # dinner
+        (22 * 60, float(round(s))),   # late snack
+    ]

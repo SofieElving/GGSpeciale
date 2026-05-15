@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Sequence
-import inspect
 
 import gymnasium as gym
 import numpy as np
@@ -83,13 +82,6 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         self.reward_type = reward_type
         self.reward_fn = REWARD_FNS[reward_type]
 
-        # Allows reward functions with or without max_insulin_action.
-        self.reward_accepts_max_insulin_action = False
-        if self.reward_fn is not None:
-            sig = inspect.signature(self.reward_fn)
-            self.reward_accepts_max_insulin_action = (
-                "max_insulin_action" in sig.parameters
-            )
 
         self.sample_time_min = float(sample_time_min)
         self.warning_window_min = float(warning_window_min)
@@ -154,22 +146,10 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         # ============================================================
         policy_action = float(np.clip(raw_policy_action, -1.0, 1.0))
 
-        # ============================================================
-        # CHANGED:
-        # Nonlinear insulin mapping:
-        #
-        #     I = I_max * exp(4 * (a - 1))
-        #
-        # Examples with I_max = 5:
-        #   a = -1.0 -> ~0.0017
-        #   a =  0.0 -> ~0.0916
-        #   a =  0.5 -> ~0.6767
-        #   a =  1.0 ->  5.0000
-        # ============================================================
         delivered = self.max_insulin_action * np.exp(
             4.0 * (policy_action - 1.0)
         )
-        #delivered = float(np.clip(delivered, 0.0, self.max_insulin_action))
+        delivered = float(np.clip(delivered, 0.0, self.max_insulin_action))
 
         sim_action = np.array([delivered], dtype=np.float32)
 
@@ -186,38 +166,22 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         original_reward = float(reward)
 
         if self.reward_fn is not None:
-            if self.reward_accepts_max_insulin_action:
-                reward = self.reward_fn(
-                    bg=raw_cgm,
-                    insulin=delivered,
-                    raw_insulin=raw_policy_action,
-                    max_insulin_action=self.max_insulin_action,
-                )
-            else:
-                reward = self.reward_fn(
-                    bg=raw_cgm,
-                    insulin=delivered,
-                    raw_insulin=raw_policy_action,
-                )
+            reward = self.reward_fn(
+                bg=raw_cgm,
+                insulin=delivered,
+                max_insulin_action=self.max_insulin_action,
+            )
+        else:
+            reward = original_reward
 
-        # Existing unsafe-CGM reward override retained.
-        # No additional hyperglycemia shaping is added here.
+        reward = float(reward)
+
         if raw_cgm < 40 or raw_cgm > 400:
-            reward = -1000000.0
+            reward = -1000.0
+            terminated = True
 
         info["original_reward"] = original_reward
         info["reward_type"] = self.reward_type
-
-        # ============================================================
-        # CHANGED:
-        # Debugging outputs.
-        # raw_policy_action = model output before clipping
-        # policy_action     = clipped normalized action in [-1, 1]
-        # scaled_action     = insulin sent to SimGlucose
-        # ============================================================
-        info["raw_policy_action"] = float(raw_policy_action)
-        info["policy_action"] = float(policy_action)
-        info["scaled_action"] = float(delivered)
 
         self._add_plot_info(
             info,
@@ -361,16 +325,13 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
             warning = np.exp(-best_dt / self.warning_window_min)
             return float(warning), float(best_carbs)
 
-        return 0.0, float(best_carbs)
+        return 0.0, 0.0
 
     def _normalize_obs(self, x: np.ndarray) -> np.ndarray:
         cgm = np.clip(x[0] / 400.0, 0.0, 1.0)
         time_since_meal = np.clip(x[1] / 1440.0, 0.0, 1.0)
         iob = np.clip(x[2] / 10.0, 0.0, 2.0)
         meal_warning = np.clip(x[3], 0.0, 1.0)
-
-        # CHANGED:
-        # Avoid saturating most realistic meals.
         meal_size = np.clip(x[4] / 120.0, 0.0, 1.0)
 
         return np.array(
@@ -524,135 +485,3 @@ def make_simglucose_spid_env(
     )
 
     return env
-
-
-class MultiPatientSimglucoseEnv(gym.Env):
-    metadata = {}
-
-    def __init__(
-        self,
-        patient_names: Sequence[str],
-        env_id: str,
-        max_episode_steps: int,
-        normalize: bool = True,
-        meal_schedule: Sequence[tuple[int, float]] | None = DEFAULT_MEALS,
-        scenario_mode: str = "fixed",
-        seed: int | None = None,
-        warning_window_min: float = 20.0,
-        insulin_tau_min: float = 55.0,
-        sample_time_min: float = 3.0,
-        time_std_multiplier: float = 1.0,
-        include_snacks: bool = True,
-        reward_type: str = "default",
-        max_insulin_action: float = 5.0,
-    ):
-        super().__init__()
-
-        if len(patient_names) == 0:
-            raise ValueError("patient_names must contain at least one patient.")
-
-        self.patient_names = list(patient_names)
-        self.env_id = env_id
-        self.max_episode_steps = int(max_episode_steps)
-        self.normalize = bool(normalize)
-        self.meal_schedule = meal_schedule
-        self.scenario_mode = scenario_mode
-        self.warning_window_min = float(warning_window_min)
-        self.insulin_tau_min = float(insulin_tau_min)
-        self.sample_time_min = float(sample_time_min)
-        self.time_std_multiplier = float(time_std_multiplier)
-        self.include_snacks = bool(include_snacks)
-        self.reward_type = reward_type
-        self.max_insulin_action = float(max_insulin_action)
-
-        self.rng = np.random.RandomState(seed)
-        self.base_seed = seed
-        self.reset_count = 0
-        self.env: gym.Env | None = None
-        self.current_patient: str | None = None
-
-        probe_env = make_simglucose_spid_env(
-            patient_name=self.patient_names[0],
-            meal_schedule=self.meal_schedule,
-            env_id=f"{self.env_id}-probe",
-            max_episode_steps=self.max_episode_steps,
-            normalize=self.normalize,
-            scenario_mode=self.scenario_mode,
-            seed=self.base_seed,
-            warning_window_min=self.warning_window_min,
-            insulin_tau_min=self.insulin_tau_min,
-            sample_time_min=self.sample_time_min,
-            time_std_multiplier=self.time_std_multiplier,
-            include_snacks=self.include_snacks,
-            reward_type=self.reward_type,
-            max_insulin_action=self.max_insulin_action,
-        )
-
-        self.observation_space = probe_env.observation_space
-        self.action_space = probe_env.action_space
-        probe_env.close()
-
-    def reset(self, *, seed=None, options=None):
-        if seed is not None:
-            self.rng.seed(seed)
-
-        if self.env is not None:
-            self.env.close()
-            self.env = None
-
-        self.reset_count += 1
-        self.current_patient = str(self.rng.choice(self.patient_names))
-
-        episode_seed = None
-
-        if self.base_seed is not None:
-            episode_seed = int(self.base_seed + self.reset_count)
-
-        if seed is not None:
-            episode_seed = int(seed + self.reset_count)
-
-        safe_patient = self.current_patient.replace("#", "-")
-        episode_env_id = f"{self.env_id}-{safe_patient}-{self.reset_count}"
-
-        self.env = make_simglucose_spid_env(
-            patient_name=self.current_patient,
-            meal_schedule=self.meal_schedule,
-            env_id=episode_env_id,
-            max_episode_steps=self.max_episode_steps,
-            normalize=self.normalize,
-            scenario_mode=self.scenario_mode,
-            seed=episode_seed,
-            warning_window_min=self.warning_window_min,
-            insulin_tau_min=self.insulin_tau_min,
-            sample_time_min=self.sample_time_min,
-            time_std_multiplier=self.time_std_multiplier,
-            include_snacks=self.include_snacks,
-            reward_type=self.reward_type,
-            max_insulin_action=self.max_insulin_action,
-        )
-
-        obs, info = self.env.reset(seed=episode_seed)
-        info["patient_name"] = self.current_patient
-        info["episode_env_id"] = episode_env_id
-
-        return obs, info
-
-    def step(self, action):
-        if self.env is None:
-            raise RuntimeError("Environment used before reset().")
-
-        obs, reward, terminated, truncated, info = self.env.step(action)
-        info["patient_name"] = self.current_patient
-
-        return obs, reward, terminated, truncated, info
-
-    def render(self):
-        if self.env is not None:
-            return self.env.render()
-
-        return None
-
-    def close(self):
-        if self.env is not None:
-            self.env.close()
-            self.env = None
