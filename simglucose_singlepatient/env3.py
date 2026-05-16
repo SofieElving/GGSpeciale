@@ -313,6 +313,9 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         info["plot_meal_size"] = float(features["meal_size"])
         info["plot_iob"] = float(features["iob"])
         info["sample_time"] = float(self.sample_time_min)
+    
+    def get_history(self):
+        return self.unwrapped.env.env.show_history()
 
 
 def make_simglucose_spid_env(
