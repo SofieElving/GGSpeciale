@@ -11,6 +11,7 @@ from typing import Any, Sequence
 
 import gymnasium as gym
 import numpy as np
+import pandas as pd
 from gymnasium import spaces
 from gymnasium.envs.registration import register, registry
 from simglucose.simulation.scenario import CustomScenario
@@ -72,6 +73,8 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         self.cgm_index = int(cgm_index)
         self.normalize = bool(normalize)
         self.max_insulin_action = float(max_insulin_action)
+        self.history = pd.DataFrame()
+        self.history_index = 0
 
         self.meal_schedule: list[tuple[int, float]] = []
         if meal_schedule is not None:
@@ -94,6 +97,17 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
 
     def reset(self, **kwargs):
+        new_history = self._get_history()
+        new_history["eval_index"] = self.history_index
+
+        self.history = (
+            pd.concat([self.history, new_history], ignore_index=True)
+            if not self.history.empty
+            else new_history
+        )
+        self.history_index += 1
+
+
         obs, info = self.env.reset(**kwargs)
 
         try:
@@ -217,6 +231,7 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
             raw_action=raw_policy_action,
             policy_action=policy_action,
         )
+        
         return wrapped_obs, reward, terminated, truncated, info
 
     def _build_obs_and_features(self, obs: Any) -> tuple[np.ndarray, dict[str, float]]:
@@ -314,8 +329,13 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         info["plot_iob"] = float(features["iob"])
         info["sample_time"] = float(self.sample_time_min)
     
-    def get_history(self):
-        return self.unwrapped.env.env.show_history()
+    def _get_history(self):
+        return self.unwrapped.env.env.show_history().reset_index()
+    
+    def clear_history(self):
+        print("HISTORY CLEARED")
+        self.history = pd.DataFrame()
+        self.history_index = 0
 
 
 def make_simglucose_spid_env(

@@ -55,7 +55,7 @@ def build_argparser() -> argparse.ArgumentParser:
         choices=["default", "smooth", "strict", "steps"],
     )
 
-    parser.add_argument("--timesteps", type=int, default=3_000_000)
+    parser.add_argument("--timesteps", type=int, default=3_000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max-episode-steps", type=int, default=480)
     parser.add_argument("--outdir", type=str, default="./output")
