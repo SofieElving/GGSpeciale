@@ -19,7 +19,7 @@ from meal_scenarios import hb_fixed_meal_schedule, SemiRandomHarrisonBenedictSce
 from rewards_smooth import glucose_insulin_reward as reward_smooth
 from rewards_steps import glucose_insulin_reward as reward_steps
 from rewards_strict import glucose_insulin_reward as reward_strict
-from rewards_positive import glucose_insulin_reward as reward_postitve
+from rewards_positive import glucose_insulin_reward as reward_positive
 
 
 REWARD_FNS: dict[str, Any] = {
@@ -27,7 +27,7 @@ REWARD_FNS: dict[str, Any] = {
     "smooth": reward_smooth,
     "strict": reward_strict,
     "steps": reward_steps,
-    "positive": reward_postitve,
+    "positive": reward_positive,
 }
 
 
@@ -39,8 +39,12 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
     Politikken handler i normaliseret rum [-1, 1], som mappes til insulin via:
         insulin = I_max * exp(4 * (a - 1))
 
-    Måltidsstørrelse er *kun* synlig inde i warning-vinduet.
-    Diagnostics lægges i info, så plotting kan ske uden at kende wrapperens interne state.
+    Måltidsstørrelse er kun synlig inde i warning-vinduet.
+
+    Warm-up:
+        Ved reset kan simulatoren køres N skjulte skridt før PPO får sin første
+        observation. Disse warm-up-skridt tæller ikke med i PPO-episoden og bliver
+        ikke plottet af progress-callbacken.
     """
 
     def __init__(
@@ -54,6 +58,9 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         normalize: bool = True,
         reward_type: str = "default",
         max_insulin_action: float = 5.0,
+        control_max_episode_steps: int | None = None,
+        warmup_steps: int = 0,
+        warmup_insulin: float = 0.0,
     ) -> None:
         super().__init__(env)
 
@@ -61,17 +68,34 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
             raise ValueError(
                 f"Ukendt reward_type={reward_type!r}. Forventede en af: {list(REWARD_FNS)}"
             )
+
         if max_insulin_action <= 0:
             raise ValueError("max_insulin_action skal være > 0.")
 
+        if warmup_steps < 0:
+            raise ValueError("warmup_steps skal være >= 0.")
+
+        if warmup_insulin < 0:
+            raise ValueError("warmup_insulin skal være >= 0.")
+
         self.reward_type = reward_type
         self.reward_fn = REWARD_FNS[reward_type]
+
         self.sample_time_min = float(sample_time_min)
         self.warning_window_min = float(warning_window_min)
         self.insulin_tau_min = float(insulin_tau_min)
         self.cgm_index = int(cgm_index)
         self.normalize = bool(normalize)
         self.max_insulin_action = float(max_insulin_action)
+
+        # Wrapper controls the visible PPO episode length.
+        # The underlying SimGlucose env is registered with extra warm-up steps.
+        self.control_max_episode_steps = control_max_episode_steps
+        self.control_step_count = 0
+
+        # Hidden reset warm-up.
+        self.warmup_steps = int(warmup_steps)
+        self.warmup_insulin = float(warmup_insulin)
 
         self.meal_schedule: list[tuple[int, float]] = []
         if meal_schedule is not None:
@@ -96,18 +120,45 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
 
-        try:
-            raw_env = self.env.unwrapped
-            inner_env = getattr(raw_env, "env", None)
-            live_scenario = getattr(inner_env, "custom_scenario", None)
-            if live_scenario is not None and hasattr(live_scenario, "get_meal_schedule"):
-                synced_schedule: list[tuple[int, float]] = []
-                for minute, carbs in live_scenario.get_meal_schedule():
-                    synced_schedule.append((int(minute) % 1440, float(carbs)))
-                synced_schedule.sort(key=lambda item: item[0])
-                self.meal_schedule = synced_schedule
-        except Exception:
-            pass
+        self.control_step_count = 0
+        self.iob = 0.0
+
+        # Hidden warm-up. The returned obs after this block is the first
+        # observation PPO sees. Warm-up rewards/actions are discarded.
+        if self.warmup_steps > 0:
+            warmup_insulin = float(
+                np.clip(self.warmup_insulin, 0.0, self.max_insulin_action)
+            )
+            warmup_action = np.array([warmup_insulin], dtype=np.float32)
+
+            warmup_failed = False
+
+            for _ in range(self.warmup_steps):
+                decay = np.exp(-self.sample_time_min / self.insulin_tau_min)
+                self.iob = float(self.iob * decay + max(0.0, warmup_insulin))
+
+                obs, _, terminated, truncated, info = self.env.step(warmup_action)
+
+                if "sample_time" in info:
+                    try:
+                        self.sample_time_min = float(info["sample_time"])
+                    except Exception:
+                        pass
+
+                if terminated or truncated:
+                    warmup_failed = True
+                    break
+
+            if warmup_failed:
+                # If warm-up itself causes failure, restart without continuing warm-up.
+                # This prevents PPO from receiving an already-terminal state.
+                obs, info = self.env.reset(**kwargs)
+                self.iob = 0.0
+                info["warmup_failed"] = True
+            else:
+                info["warmup_failed"] = False
+
+        self._sync_live_meal_schedule_if_available()
 
         if "sample_time" in info:
             try:
@@ -136,9 +187,8 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
             else:
                 self.last_meal_time_min = float(self.meal_schedule[-1][0] - 1440)
 
-        self.iob = 0.0
-
         wrapped_obs, features = self._build_obs_and_features(obs)
+
         self._add_diagnostics_info(
             info=info,
             features=features,
@@ -146,6 +196,11 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
             raw_action=0.0,
             policy_action=0.0,
         )
+
+        info["warmup_steps"] = int(self.warmup_steps)
+        info["warmup_minutes"] = float(self.warmup_steps * self.sample_time_min)
+        info["warmup_insulin"] = float(self.warmup_insulin)
+
         return wrapped_obs, info
 
     def step(self, action):
@@ -178,6 +233,11 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
                 (self.current_minute_of_day + self.sample_time_min) % 1440.0
             )
 
+        # For semi_random_hb over multiple days, the scenario may regenerate
+        # at midnight. Resync meal warnings near day boundary.
+        if self.current_minute_of_day < self.sample_time_min:
+            self._sync_live_meal_schedule_if_available()
+
         for minute, _ in self.meal_schedule:
             delta = self.current_minute_of_day - float(minute)
             if delta < 0:
@@ -203,7 +263,8 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         reward = float(reward)
 
         if raw_cgm < 40.0 or raw_cgm > 400.0:
-            reward = -1000.0
+            # Use -= so dense reward information is not discarded.
+            reward -= 1000.0
             terminated = True
             info["terminal_reason"] = "cgm_out_of_bounds"
 
@@ -217,10 +278,39 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
             raw_action=raw_policy_action,
             policy_action=policy_action,
         )
+
+        # Enforce PPO-visible control horizon after warm-up.
+        self.control_step_count += 1
+
+        if (
+            not terminated
+            and self.control_max_episode_steps is not None
+            and self.control_step_count >= self.control_max_episode_steps
+        ):
+            truncated = True
+            info["terminal_reason"] = info.get("terminal_reason", "control_time_limit")
+
+        info["control_step_count"] = int(self.control_step_count)
+
         return wrapped_obs, reward, terminated, truncated, info
 
+    def _sync_live_meal_schedule_if_available(self) -> None:
+        try:
+            raw_env = self.env.unwrapped
+            inner_env = getattr(raw_env, "env", None)
+            live_scenario = getattr(inner_env, "custom_scenario", None)
+
+            if live_scenario is not None and hasattr(live_scenario, "get_meal_schedule"):
+                synced_schedule: list[tuple[int, float]] = []
+                for minute, carbs in live_scenario.get_meal_schedule():
+                    synced_schedule.append((int(minute) % 1440, float(carbs)))
+                synced_schedule.sort(key=lambda item: item[0])
+                self.meal_schedule = synced_schedule
+        except Exception:
+            pass
+
     def _build_obs_and_features(self, obs: Any) -> tuple[np.ndarray, dict[str, float]]:
-        """        
+        """
         - rå CGM læses ud af observationen
         - tid siden sidste måltid beregnes
         - næste måltids warning + størrelse findes
@@ -261,7 +351,7 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
                 if 0.0 <= since_meal < self.sample_time_min:
                     meal_now = float(carbs)
 
-            # måltidsstørrelsen er kun synlig i warning-vinduet.
+            # Måltidsstørrelsen er kun synlig i warning-vinduet.
             if best_dt <= self.warning_window_min:
                 meal_warning = float(np.exp(-best_dt / self.warning_window_min))
                 meal_size = float(best_carbs)
@@ -330,13 +420,28 @@ def make_simglucose_spid_env(
     include_snacks: bool = True,
     reward_type: str = "default",
     max_insulin_action: float = 5.0,
+    warmup_minutes: float = 0.0,
+    warmup_insulin: float = 0.0,
 ) -> gym.Env:
     if reward_type not in REWARD_FNS:
         raise ValueError(
             f"Ukendt reward_type={reward_type!r}. Forventede en af: {list(REWARD_FNS)}"
         )
+
     if max_insulin_action <= 0:
         raise ValueError("max_insulin_action skal være > 0.")
+
+    if warmup_minutes < 0:
+        raise ValueError("warmup_minutes skal være >= 0.")
+
+    if warmup_insulin < 0:
+        raise ValueError("warmup_insulin skal være >= 0.")
+
+    warmup_steps = int(round(float(warmup_minutes) / float(sample_time_min)))
+    warmup_steps = max(0, warmup_steps)
+
+    # The underlying SimGlucose env must survive both hidden warm-up and visible control.
+    registered_max_episode_steps = int(max_episode_steps + warmup_steps)
 
     start_time = datetime(2018, 1, 1, 0, 0, 0)
 
@@ -373,14 +478,13 @@ def make_simglucose_spid_env(
             "fixed, fixed_hb, semi_random_hb."
         )
 
- 
     if env_id in registry:
         del registry[env_id]
 
     register(
         id=env_id,
         entry_point="simglucose.envs:T1DSimGymnaisumEnv",
-        max_episode_steps=max_episode_steps,
+        max_episode_steps=registered_max_episode_steps,
         kwargs={
             "patient_name": patient_name,
             "custom_scenario": sim_scenario,
@@ -388,6 +492,7 @@ def make_simglucose_spid_env(
     )
 
     env = gym.make(env_id)
+
     env = SimglucoseFeatureWrapper(
         env=env,
         meal_schedule=wrapper_schedule,
@@ -398,5 +503,9 @@ def make_simglucose_spid_env(
         normalize=normalize,
         reward_type=reward_type,
         max_insulin_action=max_insulin_action,
+        control_max_episode_steps=max_episode_steps,
+        warmup_steps=warmup_steps,
+        warmup_insulin=warmup_insulin,
     )
+
     return env

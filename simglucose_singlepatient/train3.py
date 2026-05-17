@@ -13,6 +13,8 @@ Eksempel på kørsel:
         --time-std-multiplier 0.5 \
         --include-snacks \
         --max-insulin-action 5.0 \
+        --warmup-minutes 60 \
+        --warmup-insulin 0.0 \
         --timesteps 3000000 \
         --seed 42 \
         --outdir ./output/smooth/adult-010
@@ -24,31 +26,11 @@ import warnings
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-# ```mermaid
-# flowchart LR
-#   train_py[train.py] --> env_py[env.py]
-#   train_py --> plotting_py[plotting.py]
-#   env_py --> meals_py[meal_scenarios.py]
-#   plotting_py --> env_info[info-diagnostics fra env.py]
-# ```
-
-# Dum fælde:
-# Hvis du senere blander denne fil med gmDAGGER/PySR/JuliaCall,
-# så importér juliacall/gmDAGGER *før* stable_baselines3, fordi SB3 importerer torch.
-# På klynger hjælper det ofte også at sætte disse miljøvariable før Python starter:
-#   PYTHON_JULIACALL_HANDLE_SIGNALS=yes
-#   JULIA_NUM_THREADS=1
-#   OMP_NUM_THREADS=1
-#   MKL_NUM_THREADS=1
-#   OPENBLAS_NUM_THREADS=1
-
-# Forventet API i meal_scenarios.py:
-#   DEFAULT_MEALS, parse_meal_schedule(...), hb_fixed_meal_schedule(...),
-#   SemiRandomHarrisonBenedictScenario
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3.common.vec_env import DummyVecEnv, VecMonitor
 
+# Change env3 to env if your file is called env.py.
 from env3 import REWARD_FNS, make_simglucose_spid_env
 from meal_scenarios import DEFAULT_MEALS, parse_meal_schedule
 from plotting import SimglucoseProgressPlotCallback
@@ -81,6 +63,8 @@ class TrainConfig:
     insulin_tau_min: float
     sample_time_min: float
     max_insulin_action: float
+    warmup_minutes: float
+    warmup_insulin: float
 
 
 def make_env_fn(
@@ -97,6 +81,8 @@ def make_env_fn(
     insulin_tau_min: float,
     sample_time_min: float,
     max_insulin_action: float,
+    warmup_minutes: float,
+    warmup_insulin: float,
 ):
     def _init():
         return make_simglucose_spid_env(
@@ -114,6 +100,8 @@ def make_env_fn(
             include_snacks=include_snacks,
             reward_type=reward_type,
             max_insulin_action=max_insulin_action,
+            warmup_minutes=warmup_minutes,
+            warmup_insulin=warmup_insulin,
         )
 
     return _init
@@ -123,23 +111,27 @@ def main() -> None:
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--patient", type=str, default="adult#010")
+
     parser.add_argument(
         "--reward-type",
         type=str,
         default="default",
         choices=list(REWARD_FNS.keys()),
     )
+
     parser.add_argument("--timesteps", type=int, default=3_000_000)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--max-episode-steps", type=int, default=480)
     parser.add_argument("--outdir", type=str, default="./output")
     parser.add_argument("--meals", type=str, default="7:45,12:70,16:15,18:80,23:10")
+
     parser.add_argument(
         "--scenario-mode",
         type=str,
         default="fixed",
         choices=["fixed", "fixed_hb", "semi_random_hb"],
     )
+
     parser.add_argument("--time-std-multiplier", type=float, default=1.0)
     parser.add_argument("--include-snacks", action="store_true")
 
@@ -160,18 +152,37 @@ def main() -> None:
     parser.add_argument("--sample-time-min", type=float, default=3.0)
     parser.add_argument("--max-insulin-action", type=float, default=5.0)
 
+    # Hidden warm-up before PPO starts controlling.
+    parser.add_argument("--warmup-minutes", type=float, default=0.0)
+    parser.add_argument("--warmup-insulin", type=float, default=0.0)
+
     args = parser.parse_args()
 
     if args.max_insulin_action <= 0:
         raise ValueError("--max-insulin-action skal være > 0.")
+
+    if args.warmup_minutes < 0:
+        raise ValueError("--warmup-minutes skal være >= 0.")
+
+    if args.warmup_insulin < 0:
+        raise ValueError("--warmup-insulin skal være >= 0.")
+
     if args.max_insulin_action > 30:
         warnings.warn(
-            "max_insulin_action er større end SimGlucose' klassiske basal-område. "
-            "Det kan være fint, men dobbelttjek at action-skaleringen er tilsigtet.",
+            "max_insulin_action er større end SimGlucose' klassiske action-område. "
+            "Dobbelttjek at action-skaleringen er tilsigtet.",
+            stacklevel=2,
+        )
+
+    if args.warmup_insulin > 0:
+        warnings.warn(
+            "Du bruger warmup_insulin > 0. Det betyder, at patienten kan starte PPO-kontrol "
+            "med insulin/IOB fra warm-up-perioden. Start typisk med --warmup-insulin 0.0.",
             stacklevel=2,
         )
 
     meals = parse_meal_schedule(args.meals, DEFAULT_MEALS)
+
     net_arch = [int(part) for part in args.net_arch.split(",") if part.strip()]
     if not net_arch:
         raise ValueError("--net-arch skal indeholde mindst ét lag, fx '128,128'.")
@@ -202,6 +213,8 @@ def main() -> None:
         insulin_tau_min=args.insulin_tau_min,
         sample_time_min=args.sample_time_min,
         max_insulin_action=args.max_insulin_action,
+        warmup_minutes=args.warmup_minutes,
+        warmup_insulin=args.warmup_insulin,
     )
 
     outdir = Path(config.outdir)
@@ -216,11 +229,14 @@ def main() -> None:
         json.dump(asdict(config), f, indent=2)
     tmp_config_path.replace(config_path)
 
+    # Training uses stochastic scenario when seed=None.
     train_seed = None
 
+    # Evaluation can be deterministic if --seed is given.
     eval_seed = None if config.seed is None else config.seed + 10_000
-    progress_seed = None
 
+    # Progress plots should usually vary when semi_random_hb is used.
+    progress_seed = None
 
     train_env = VecMonitor(
         DummyVecEnv(
@@ -239,6 +255,8 @@ def main() -> None:
                     insulin_tau_min=config.insulin_tau_min,
                     sample_time_min=config.sample_time_min,
                     max_insulin_action=config.max_insulin_action,
+                    warmup_minutes=config.warmup_minutes,
+                    warmup_insulin=config.warmup_insulin,
                 )
             ]
         )
@@ -261,6 +279,8 @@ def main() -> None:
                     insulin_tau_min=config.insulin_tau_min,
                     sample_time_min=config.sample_time_min,
                     max_insulin_action=config.max_insulin_action,
+                    warmup_minutes=config.warmup_minutes,
+                    warmup_insulin=config.warmup_insulin,
                 )
             ]
         )
@@ -284,6 +304,8 @@ def main() -> None:
                         insulin_tau_min=config.insulin_tau_min,
                         sample_time_min=config.sample_time_min,
                         max_insulin_action=config.max_insulin_action,
+                        warmup_minutes=config.warmup_minutes,
+                        warmup_insulin=config.warmup_insulin,
                     )
                 ]
             )

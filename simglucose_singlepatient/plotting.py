@@ -155,7 +155,9 @@ class SimglucoseProgressPlotCallback(BaseCallback):
             os.fsync(f.fileno())
         tmp_json_path.replace(json_path)
 
-        fig, axes = plt.subplots(5, 1, figsize=(11, 11), sharex=True)
+        # 4 panels: CGM, meal, delivered insulin, IOB.
+        # Policy action is not plotted, but mean_action is still saved in metrics.
+        fig, axes = plt.subplots(4, 1, figsize=(11, 9), sharex=True)
 
         axes[0].plot(times, cgms, linewidth=2, label="CGM")
 
@@ -189,12 +191,8 @@ class SimglucoseProgressPlotCallback(BaseCallback):
 
         axes[3].plot(times, iobs, label="IOB")
         axes[3].set_ylabel("IOB")
+        axes[3].set_xlabel("Tid (min)")
         axes[3].legend(loc="upper right")
-
-        axes[4].plot(times, policy_actions, label="Policy-action")
-        axes[4].set_ylabel("Action [-1, 1]")
-        axes[4].set_xlabel("Tid (min)")
-        axes[4].legend(loc="upper right")
 
         png_path = self.save_dir / f"progress_{self.num_timesteps:08d}.png"
         tmp_png_path = png_path.with_name(png_path.name + ".tmp")
