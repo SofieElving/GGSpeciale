@@ -547,18 +547,10 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
             return
 
         new_history = new_history.copy()
-        new_history["eval_index"] = self.history_index
+        self.history.append(new_history)
 
-        self.history = (
-            pd.concat([self.history, new_history], ignore_index=True)
-            if not self.history.empty
-            else new_history
-        )
-        self.history_index += 1
-
-    def clear_history(self) -> None:
-        print("HISTORY CLEARED")
-        self.history = pd.DataFrame()
+    def clear_history(self):
+        self.history = []
         self.history_index = 0
 
 
