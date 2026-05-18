@@ -54,7 +54,7 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         shield_bg_threshold, bliver insulin sat til 0.
 
     BB warm-up:
-        Hvis --bb-warmup bruges, køres BBController skjult efter reset,
+        Hvis --bb-warmup bruges, køres BBController skjult i 60 minutter efter reset,
         før PPO får første observation. Warm-up indgår ikke i reward/plots.
 
     History:
@@ -116,8 +116,6 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         self.history = pd.DataFrame()
         self.history_index = 0
 
-        # This is the announced meal schedule used for meal_warning and meal_size.
-        # In semi_random_hb this can differ from the actual delivered meal schedule.
         self.meal_schedule: list[tuple[int, float]] = []
         if meal_schedule is not None:
             for minute, carbs in meal_schedule:
@@ -129,7 +127,6 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         self.iob = 0.0
 
         # Current CGM is the CGM observation PPO is currently acting on.
-        # This is not trend and not CGM history.
         self.current_cgm: float | None = None
 
         if self.normalize:
@@ -223,8 +220,6 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
             else:
                 info["bb_warmup_failed"] = False
 
-        # Important for semi_random_hb:
-        # This syncs the announced meal schedule, not necessarily the actual delivered one.
         self._sync_live_meal_schedule_if_available()
 
         if "sample_time" in info:
@@ -260,7 +255,6 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         info["shield_active"] = 0.0
         info["shield_reason"] = "reset"
         info["shield_cgm"] = float(self.current_cgm)
-        info["shield_bg_threshold"] = float(self.shield_bg_threshold)
 
         self._add_diagnostics_info(
             info=info,
@@ -319,8 +313,6 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
                 (self.current_minute_of_day + self.sample_time_min) % 1440.0
             )
 
-        # For semi_random_hb over multiple days, the scenario may regenerate at midnight.
-        # Resync announced meal warnings near day boundary.
         if self.current_minute_of_day < self.sample_time_min:
             self._sync_live_meal_schedule_if_available()
 
@@ -353,7 +345,6 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
 
         if raw_cgm < 40.0 or raw_cgm > 400.0:
             reward -= 1000.0
-            # Keep this commented if you intentionally do not want early termination:
             # terminated = True
             info["terminal_reason"] = "cgm_out_of_bounds"
 
@@ -390,36 +381,17 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         return wrapped_obs, reward, terminated, truncated, info
 
     def _sync_live_meal_schedule_if_available(self) -> None:
-        """
-        Sync the wrapper's meal schedule from the scenario.
-
-        For semi_random_hb with noisy actual delivery, this intentionally uses
-        get_announced_meal_schedule() when available. That means:
-            - PPO gets warning based on announced meals.
-            - SimGlucose receives actual noisy meals through scenario.get_action().
-        """
         try:
             raw_env = self.env.unwrapped
             inner_env = getattr(raw_env, "env", None)
             live_scenario = getattr(inner_env, "custom_scenario", None)
 
-            if live_scenario is None:
-                return
-
-            if hasattr(live_scenario, "get_announced_meal_schedule"):
-                schedule = live_scenario.get_announced_meal_schedule()
-            elif hasattr(live_scenario, "get_meal_schedule"):
-                schedule = live_scenario.get_meal_schedule()
-            else:
-                return
-
-            synced_schedule: list[tuple[int, float]] = []
-            for minute, carbs in schedule:
-                synced_schedule.append((int(minute) % 1440, float(carbs)))
-
-            synced_schedule.sort(key=lambda item: item[0])
-            self.meal_schedule = synced_schedule
-
+            if live_scenario is not None and hasattr(live_scenario, "get_meal_schedule"):
+                synced_schedule: list[tuple[int, float]] = []
+                for minute, carbs in live_scenario.get_meal_schedule():
+                    synced_schedule.append((int(minute) % 1440, float(carbs)))
+                synced_schedule.sort(key=lambda item: item[0])
+                self.meal_schedule = synced_schedule
         except Exception:
             pass
 
@@ -459,8 +431,6 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
                 if 0.0 <= since_meal < self.sample_time_min:
                     meal_now = float(carbs)
 
-            # Måltidsstørrelsen er kun synlig i warning-vinduet.
-            # This is based on announced meals.
             if best_dt <= self.warning_window_min:
                 meal_warning = float(np.exp(-best_dt / self.warning_window_min))
                 meal_size = float(best_carbs)
@@ -579,9 +549,6 @@ def make_simglucose_spid_env(
     max_insulin_action: float = 5.0,
     shield_bg_threshold: float = 50.0,
     use_bb_warmup: bool = False,
-    amount_noise_std_fraction: float = 0.15,
-    actual_time_noise_std_min: float = 0.0,
-    actual_time_noise_clip_min: float = 30.0,
 ) -> gym.Env:
     if reward_type not in REWARD_FNS:
         raise ValueError(
@@ -593,15 +560,6 @@ def make_simglucose_spid_env(
 
     if shield_bg_threshold <= 0:
         raise ValueError("shield_bg_threshold skal være > 0.")
-
-    if amount_noise_std_fraction < 0:
-        raise ValueError("amount_noise_std_fraction skal være >= 0.")
-
-    if actual_time_noise_std_min < 0:
-        raise ValueError("actual_time_noise_std_min skal være >= 0.")
-
-    if actual_time_noise_clip_min < 0:
-        raise ValueError("actual_time_noise_clip_min skal være >= 0.")
 
     bb_warmup_steps = 0
     if use_bb_warmup:
@@ -636,18 +594,8 @@ def make_simglucose_spid_env(
             seed=seed,
             time_std_multiplier=time_std_multiplier,
             include_snacks=include_snacks,
-            amount_noise_std_fraction=amount_noise_std_fraction,
-            actual_time_noise_std_min=actual_time_noise_std_min,
-            actual_time_noise_clip_min=actual_time_noise_clip_min,
         )
-
-        # Important:
-        # Wrapper gets announced meals for warning/meal_size.
-        # SimGlucose receives actual noisy meals through sim_scenario.get_action().
-        if hasattr(sim_scenario, "get_announced_meal_schedule"):
-            wrapper_schedule = sim_scenario.get_announced_meal_schedule()
-        else:
-            wrapper_schedule = sim_scenario.get_meal_schedule()
+        wrapper_schedule = sim_scenario.get_meal_schedule()
 
     else:
         raise ValueError(

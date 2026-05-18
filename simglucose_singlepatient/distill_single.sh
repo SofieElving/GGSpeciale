@@ -40,8 +40,8 @@ PATIENTS=(
 PATIENT="${PATIENTS[$SLURM_ARRAY_TASK_ID]}"
 
 TEACHER_ROOT="./teacher_models"
-SAVE_ROOT="./distil_results"
-REWARD_TYPE="strict"
+SAVE_ROOT="./distil_results_w_history"
+REWARD_TYPE="smooth"
 
 echo "Distilling patient: ${PATIENT}"
 

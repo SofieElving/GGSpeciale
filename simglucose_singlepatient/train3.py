@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 """
-- env.py: SimGlucose-wrapper + miljøfabrik
+- env_w_history.py: SimGlucose-wrapper + miljøfabrik
 - plotting.py: progress-plots + checkpoint-metrics
 - train.py: CLI, konfiguration og PPO-træning
 
@@ -11,10 +11,13 @@ Eksempel på kørsel:
         --reward-type smooth \
         --scenario-mode semi_random_hb \
         --time-std-multiplier 0.5 \
+        --amount-noise-std-fraction 0.10 \
+        --actual-time-noise-std-min 5 \
+        --actual-time-noise-clip-min 15 \
         --include-snacks \
         --max-insulin-action 5.0 \
-        --warmup-minutes 60 \
-        --warmup-insulin 0.0 \
+        --shield-bg-threshold 90 \
+        --bb-warmup \
         --timesteps 3000000 \
         --seed 42 \
         --outdir ./output/smooth/adult-010
@@ -30,7 +33,6 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3.common.vec_env import DummyVecEnv, VecMonitor
 
-# Change env3 to env if your file is called env.py.
 from env3 import REWARD_FNS, make_simglucose_spid_env
 from meal_scenarios import DEFAULT_MEALS, parse_meal_schedule
 from plotting import SimglucoseProgressPlotCallback
@@ -42,12 +44,18 @@ class TrainConfig:
     reward_type: str
     meals: list[tuple[int, float]]
     scenario_mode: str
+
     time_std_multiplier: float
     include_snacks: bool
+    amount_noise_std_fraction: float
+    actual_time_noise_std_min: float
+    actual_time_noise_clip_min: float
+
     timesteps: int
     seed: int | None
     max_episode_steps: int
     outdir: str
+
     learning_rate: float
     n_steps: int
     batch_size: int
@@ -59,12 +67,13 @@ class TrainConfig:
     vf_coef: float
     max_grad_norm: float
     net_arch: list[int]
+
     warning_window_min: float
     insulin_tau_min: float
     sample_time_min: float
     max_insulin_action: float
-    warmup_minutes: float
-    warmup_insulin: float
+    shield_bg_threshold: float
+    use_bb_warmup: bool
 
 
 def make_env_fn(
@@ -76,38 +85,49 @@ def make_env_fn(
     scenario_mode: str,
     time_std_multiplier: float,
     include_snacks: bool,
+    amount_noise_std_fraction: float,
+    actual_time_noise_std_min: float,
+    actual_time_noise_clip_min: float,
     reward_type: str,
     warning_window_min: float,
     insulin_tau_min: float,
     sample_time_min: float,
     max_insulin_action: float,
-    warmup_minutes: float,
-    warmup_insulin: float,
+    shield_bg_threshold: float,
+    use_bb_warmup: bool,
 ):
     def _init():
-        return make_simglucose_spid_env(
+        env = make_simglucose_spid_env(
             patient_name=patient,
             meal_schedule=meals,
             env_id=env_id,
             max_episode_steps=max_episode_steps,
             normalize=True,
             scenario_mode=scenario_mode,
-            seed=seed,
+            seed=None,#seed,
             warning_window_min=warning_window_min,
             insulin_tau_min=insulin_tau_min,
             sample_time_min=sample_time_min,
             time_std_multiplier=time_std_multiplier,
             include_snacks=include_snacks,
+            amount_noise_std_fraction=amount_noise_std_fraction,
+            actual_time_noise_std_min=actual_time_noise_std_min,
+            actual_time_noise_clip_min=actual_time_noise_clip_min,
             reward_type=reward_type,
             max_insulin_action=max_insulin_action,
-            warmup_minutes=warmup_minutes,
-            warmup_insulin=warmup_insulin,
+            shield_bg_threshold=shield_bg_threshold,
+            use_bb_warmup=use_bb_warmup,
         )
+
+        if seed is not None:
+            env.action_space.seed(seed)
+
+        return env
 
     return _init
 
 
-def main() -> None:
+def build_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--patient", type=str, default="adult#010")
@@ -132,8 +152,44 @@ def main() -> None:
         choices=["fixed", "fixed_hb", "semi_random_hb"],
     )
 
-    parser.add_argument("--time-std-multiplier", type=float, default=1.0)
+    parser.add_argument(
+        "--time-std-multiplier",
+        type=float,
+        default=1.0,
+        help=(
+            "Controls semi-random announced meal-time variability. "
+            "0.5 gives less variable meal times than 1.0."
+        ),
+    )
     parser.add_argument("--include-snacks", action="store_true")
+
+    parser.add_argument(
+        "--amount-noise-std-fraction",
+        type=float,
+        default=0.15,
+        help=(
+            "Relative std for actual meal-size noise in semi_random_hb. "
+            "Example: 0.15 = 15 percent std. Use 0 for deterministic sizes."
+        ),
+    )
+    parser.add_argument(
+        "--actual-time-noise-std-min",
+        type=float,
+        default=0.0,
+        help=(
+            "Std in minutes for mismatch between announced meal time and actual "
+            "delivered meal time in semi_random_hb. Use 0 for no mismatch."
+        ),
+    )
+    parser.add_argument(
+        "--actual-time-noise-clip-min",
+        type=float,
+        default=30.0,
+        help=(
+            "Maximum absolute mismatch in minutes between announced and actual "
+            "meal time in semi_random_hb."
+        ),
+    )
 
     parser.add_argument("--learning-rate", type=float, default=3e-4)
     parser.add_argument("--n-steps", type=int, default=480)
@@ -152,20 +208,58 @@ def main() -> None:
     parser.add_argument("--sample-time-min", type=float, default=3.0)
     parser.add_argument("--max-insulin-action", type=float, default=5.0)
 
-    # Hidden warm-up before PPO starts controlling.
-    parser.add_argument("--warmup-minutes", type=float, default=0.0)
-    parser.add_argument("--warmup-insulin", type=float, default=0.0)
+    parser.add_argument(
+        "--shield-bg-threshold",
+        type=float,
+        default=90.0,
+        help="Suspend insulin when current observed CGM is below this threshold.",
+    )
 
-    args = parser.parse_args()
+    parser.add_argument(
+        "--bb-warmup",
+        action="store_true",
+        help="Run hardcoded BBController warm-up before PPO starts.",
+    )
 
+    return parser
+
+
+def validate_args(args: argparse.Namespace) -> None:
     if args.max_insulin_action <= 0:
         raise ValueError("--max-insulin-action skal være > 0.")
 
-    if args.warmup_minutes < 0:
-        raise ValueError("--warmup-minutes skal være >= 0.")
+    if args.shield_bg_threshold <= 0:
+        raise ValueError("--shield-bg-threshold skal være > 0.")
 
-    if args.warmup_insulin < 0:
-        raise ValueError("--warmup-insulin skal være >= 0.")
+    if args.warning_window_min <= 0:
+        raise ValueError("--warning-window-min skal være > 0.")
+
+    if args.insulin_tau_min <= 0:
+        raise ValueError("--insulin-tau-min skal være > 0.")
+
+    if args.sample_time_min <= 0:
+        raise ValueError("--sample-time-min skal være > 0.")
+
+    if args.max_episode_steps <= 0:
+        raise ValueError("--max-episode-steps skal være > 0.")
+
+    if args.timesteps <= 0:
+        raise ValueError("--timesteps skal være > 0.")
+
+    if args.n_steps <= 0:
+        raise ValueError("--n-steps skal være > 0.")
+
+    if args.batch_size <= 0:
+        raise ValueError("--batch-size skal være > 0.")
+
+    if args.amount_noise_std_fraction < 0:
+        raise ValueError("--amount-noise-std-fraction skal være >= 0.")
+
+    if args.actual_time_noise_std_min < 0:
+        raise ValueError("--actual-time-noise-std-min skal være >= 0.")
+
+    if args.actual_time_noise_clip_min < 0:
+        raise ValueError("--actual-time-noise-clip-min skal være >= 0.")
 
     if args.max_insulin_action > 30:
         warnings.warn(
@@ -174,12 +268,17 @@ def main() -> None:
             stacklevel=2,
         )
 
-    if args.warmup_insulin > 0:
-        warnings.warn(
-            "Du bruger warmup_insulin > 0. Det betyder, at patienten kan starte PPO-kontrol "
-            "med insulin/IOB fra warm-up-perioden. Start typisk med --warmup-insulin 0.0.",
-            stacklevel=2,
-        )
+    if args.scenario_mode != "semi_random_hb":
+        if args.actual_time_noise_std_min > 0 or args.amount_noise_std_fraction != 0.15:
+            warnings.warn(
+                "Meal noise arguments only affect scenario_mode='semi_random_hb'.",
+                stacklevel=2,
+            )
+
+
+def main() -> None:
+    args = build_argparser().parse_args()
+    validate_args(args)
 
     meals = parse_meal_schedule(args.meals, DEFAULT_MEALS)
 
@@ -194,6 +293,9 @@ def main() -> None:
         scenario_mode=args.scenario_mode,
         time_std_multiplier=args.time_std_multiplier,
         include_snacks=args.include_snacks,
+        amount_noise_std_fraction=args.amount_noise_std_fraction,
+        actual_time_noise_std_min=args.actual_time_noise_std_min,
+        actual_time_noise_clip_min=args.actual_time_noise_clip_min,
         timesteps=args.timesteps,
         seed=args.seed,
         max_episode_steps=args.max_episode_steps,
@@ -213,8 +315,8 @@ def main() -> None:
         insulin_tau_min=args.insulin_tau_min,
         sample_time_min=args.sample_time_min,
         max_insulin_action=args.max_insulin_action,
-        warmup_minutes=args.warmup_minutes,
-        warmup_insulin=args.warmup_insulin,
+        shield_bg_threshold=args.shield_bg_threshold,
+        use_bb_warmup=args.bb_warmup,
     )
 
     outdir = Path(config.outdir)
@@ -229,14 +331,9 @@ def main() -> None:
         json.dump(asdict(config), f, indent=2)
     tmp_config_path.replace(config_path)
 
-    # Training uses stochastic scenario when seed=None.
-    train_seed = None
-
-    # Evaluation can be deterministic if --seed is given.
-    eval_seed = None if config.seed is None else config.seed + 10_000
-
-    # Progress plots should usually vary when semi_random_hb is used.
-    progress_seed = None
+    train_seed = config.seed
+    eval_seed = None# if config.seed is None else config.seed + 10_000
+    progress_seed = None #if config.seed is None else config.seed + 20_000
 
     train_env = VecMonitor(
         DummyVecEnv(
@@ -246,17 +343,20 @@ def main() -> None:
                     patient=config.patient,
                     meals=config.meals,
                     max_episode_steps=config.max_episode_steps,
-                    seed=train_seed,
+                    seed=None,#train_seed,
                     scenario_mode=config.scenario_mode,
                     time_std_multiplier=config.time_std_multiplier,
                     include_snacks=config.include_snacks,
+                    amount_noise_std_fraction=config.amount_noise_std_fraction,
+                    actual_time_noise_std_min=config.actual_time_noise_std_min,
+                    actual_time_noise_clip_min=config.actual_time_noise_clip_min,
                     reward_type=config.reward_type,
                     warning_window_min=config.warning_window_min,
                     insulin_tau_min=config.insulin_tau_min,
                     sample_time_min=config.sample_time_min,
                     max_insulin_action=config.max_insulin_action,
-                    warmup_minutes=config.warmup_minutes,
-                    warmup_insulin=config.warmup_insulin,
+                    shield_bg_threshold=config.shield_bg_threshold,
+                    use_bb_warmup=config.use_bb_warmup,
                 )
             ]
         )
@@ -270,17 +370,20 @@ def main() -> None:
                     patient=config.patient,
                     meals=config.meals,
                     max_episode_steps=config.max_episode_steps,
-                    seed=eval_seed,
+                    seed=None,#eval_seed,
                     scenario_mode=config.scenario_mode,
                     time_std_multiplier=config.time_std_multiplier,
                     include_snacks=config.include_snacks,
+                    amount_noise_std_fraction=config.amount_noise_std_fraction,
+                    actual_time_noise_std_min=config.actual_time_noise_std_min,
+                    actual_time_noise_clip_min=config.actual_time_noise_clip_min,
                     reward_type=config.reward_type,
                     warning_window_min=config.warning_window_min,
                     insulin_tau_min=config.insulin_tau_min,
                     sample_time_min=config.sample_time_min,
                     max_insulin_action=config.max_insulin_action,
-                    warmup_minutes=config.warmup_minutes,
-                    warmup_insulin=config.warmup_insulin,
+                    shield_bg_threshold=config.shield_bg_threshold,
+                    use_bb_warmup=config.use_bb_warmup,
                 )
             ]
         )
@@ -295,17 +398,20 @@ def main() -> None:
                         patient=config.patient,
                         meals=config.meals,
                         max_episode_steps=config.max_episode_steps,
-                        seed=progress_seed,
+                        seed=None,#progress_seed,
                         scenario_mode=config.scenario_mode,
                         time_std_multiplier=config.time_std_multiplier,
                         include_snacks=config.include_snacks,
+                        amount_noise_std_fraction=config.amount_noise_std_fraction,
+                        actual_time_noise_std_min=config.actual_time_noise_std_min,
+                        actual_time_noise_clip_min=config.actual_time_noise_clip_min,
                         reward_type=config.reward_type,
                         warning_window_min=config.warning_window_min,
                         insulin_tau_min=config.insulin_tau_min,
                         sample_time_min=config.sample_time_min,
                         max_insulin_action=config.max_insulin_action,
-                        warmup_minutes=config.warmup_minutes,
-                        warmup_insulin=config.warmup_insulin,
+                        shield_bg_threshold=config.shield_bg_threshold,
+                        use_bb_warmup=config.use_bb_warmup,
                     )
                 ]
             )
@@ -350,7 +456,7 @@ def main() -> None:
         max_grad_norm=config.max_grad_norm,
         policy_kwargs={"net_arch": config.net_arch},
         tensorboard_log=str(outdir / "logs"),
-        seed=config.seed,
+        seed=None,#config.seed,
         verbose=1,
     )
 

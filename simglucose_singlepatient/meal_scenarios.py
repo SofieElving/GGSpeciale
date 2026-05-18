@@ -81,16 +81,16 @@ def harris_benedict(
 
 class SemiRandomHarrisonBenedictScenario(Scenario):
     """
-    Generates a daily scenario with semi-random meal times and patient-specific
-    meal sizes based on body weight and kind.
+    Semi-random meal scenario with optional mismatch between announced meals
+    and actually delivered meals.
 
-    Exposes self.scenario in the same format:
-        {
-            "meal": {
-                "time": [...],    # minute-of-day
-                "amount": [...],  # grams of carbs
-            }
-        }
+    - announced_scenario:
+        Used by wrapper for meal_warning and meal_size.
+
+    - scenario:
+        Used by get_action(), i.e. actual SimGlucose meal delivery.
+
+    This allows meal warnings to be imperfect.
     """
 
     def __init__(
@@ -104,79 +104,179 @@ class SemiRandomHarrisonBenedictScenario(Scenario):
         deterministic_meal_size: bool = False,
         deterministic_meal_time: bool = False,
         deterministic_meal_occurrence: bool = False,
+        amount_noise_std_fraction: float = 0.15,
+        actual_time_noise_std_min: float = 0.0,
+        actual_time_noise_clip_min: float = 30.0,
     ):
+        """
+        Args:
+            amount_noise_std_fraction:
+                Relative std for actual meal-size noise.
+                Example: 0.15 means std = 15% of mean meal size.
+                Set to 0.0 for deterministic meal sizes.
+
+            actual_time_noise_std_min:
+                Std in minutes added to the actual delivery time after
+                the announced time has been sampled.
+                Example: 10.0 means actual meal time is usually within
+                roughly +/- 20 min of announced time.
+
+            actual_time_noise_clip_min:
+                Maximum absolute time mismatch.
+                Example: 30.0 clips actual delivery time to announced +/- 30 min.
+        """
         super().__init__(start_time=start_time)
+
+        if amount_noise_std_fraction < 0:
+            raise ValueError("amount_noise_std_fraction must be >= 0.")
+
+        if actual_time_noise_std_min < 0:
+            raise ValueError("actual_time_noise_std_min must be >= 0.")
+
+        if actual_time_noise_clip_min < 0:
+            raise ValueError("actual_time_noise_clip_min must be >= 0.")
+
         self.patient_name = patient_name
         self.seed = seed
         self.time_std_multiplier = float(time_std_multiplier)
         self.include_snacks = bool(include_snacks)
         self.meal_duration_min = int(meal_duration_min)
+
         self.deterministic_meal_size = bool(deterministic_meal_size)
         self.deterministic_meal_time = bool(deterministic_meal_time)
         self.deterministic_meal_occurrence = bool(deterministic_meal_occurrence)
 
+        self.amount_noise_std_fraction = float(amount_noise_std_fraction)
+        self.actual_time_noise_std_min = float(actual_time_noise_std_min)
+        self.actual_time_noise_clip_min = float(actual_time_noise_clip_min)
+
         self.bw, self.age, self.kind = get_patient_bw_and_kind(patient_name)
+
+        self.announced_scenario = {"meal": {"time": [], "amount": []}}
+        self.scenario = {"meal": {"time": [], "amount": []}}
+
         self.reset()
 
     def reset(self):
         self.random_gen = np.random.RandomState(self.seed)
-        self.scenario = self.create_scenario()
+        self.announced_scenario, self.scenario = self.create_scenario()
+
+    def _sample_truncated_normal(self, mean: float, std: float, lb: float, ub: float) -> float:
+        if std <= 0:
+            return float(np.clip(mean, lb, ub))
+
+        return float(
+            truncnorm.rvs(
+                a=(lb - mean) / std,
+                b=(ub - mean) / std,
+                loc=mean,
+                scale=std,
+                random_state=self.random_gen,
+            )
+        )
+
+    def _sample_actual_time(self, announced_time: float, lb: float, ub: float) -> int:
+        if self.actual_time_noise_std_min <= 0:
+            return int(round(announced_time))
+
+        noise = self.random_gen.normal(0.0, self.actual_time_noise_std_min)
+
+        if self.actual_time_noise_clip_min > 0:
+            noise = float(
+                np.clip(
+                    noise,
+                    -self.actual_time_noise_clip_min,
+                    self.actual_time_noise_clip_min,
+                )
+            )
+
+        actual_time = announced_time + noise
+        actual_time = float(np.clip(actual_time, lb, ub))
+
+        return int(round(actual_time))
+
+    def _sample_amount(self, mean_amount: float) -> float:
+        if self.deterministic_meal_size or self.amount_noise_std_fraction <= 0:
+            return float(round(mean_amount))
+
+        std = mean_amount * self.amount_noise_std_fraction
+        amount = self.random_gen.normal(mean_amount, std)
+        return float(max(round(amount), 0.0))
 
     def create_scenario(self):
-        scenario = {"meal": {"time": [], "amount": []}}
+        announced = {"meal": {"time": [], "amount": []}}
+        actual = {"meal": {"time": [], "amount": []}}
 
-        mu_b, mu_l, mu_d, mu_s = harris_benedict(self.bw, self.age, self.kind,)
+        mu_b, mu_l, mu_d, mu_s = harris_benedict(self.bw, self.age, self.kind)
 
         # breakfast, snack1, lunch, snack2, dinner, snack3
         probs = [0.95, 0.3, 0.95, 0.3, 0.95, 0.3]
         if not self.include_snacks:
             probs = [0.95, 0.0, 0.95, 0.0, 0.95, 0.0]
 
-        time_lb = np.array([5, 9, 10, 14, 16, 20]) * 60
-        time_ub = np.array([9, 10, 14, 16, 20, 23]) * 60
-        time_mu = np.array([7, 9.5, 12, 15, 18, 21.5]) * 60
-        time_sigma = np.array([60, 30, 60, 30, 60, 30]) * self.time_std_multiplier
+        time_lb = np.array([5, 9, 10, 14, 16, 20], dtype=float) * 60.0
+        time_ub = np.array([9, 10, 14, 16, 20, 23], dtype=float) * 60.0
+        time_mu = np.array([7, 9.5, 12, 15, 18, 21.5], dtype=float) * 60.0
+        time_sigma = (
+            np.array([60, 30, 60, 30, 60, 30], dtype=float)
+            * self.time_std_multiplier
+        )
 
-        amount_mu = np.array([mu_b, mu_s, mu_l, mu_s, mu_d, mu_s])
-        amount_sigma = amount_mu * 0.15
+        amount_mu = np.array([mu_b, mu_s, mu_l, mu_s, mu_d, mu_s], dtype=float)
 
-        for p, tlb, tub, tbar, tsd, mbar, msd in zip(
-            probs, time_lb, time_ub, time_mu, time_sigma, amount_mu, amount_sigma
+        for p, tlb, tub, tbar, tsd, mbar in zip(
+            probs, time_lb, time_ub, time_mu, time_sigma, amount_mu
         ):
-            if self.random_gen.rand() < p or self.deterministic_meal_occurrence:
-                tmeal = np.round(
-                    truncnorm.rvs(
-                        a=(tlb - tbar) / tsd,
-                        b=(tub - tbar) / tsd,
-                        loc=tbar,
-                        scale=tsd,
-                        random_state=self.random_gen,
+            meal_occurs = self.random_gen.rand() < p or self.deterministic_meal_occurrence
+
+            if not meal_occurs:
+                continue
+
+            if self.deterministic_meal_time:
+                announced_time = float(round(tbar))
+            else:
+                announced_time = round(
+                    self._sample_truncated_normal(
+                        mean=float(tbar),
+                        std=float(tsd),
+                        lb=float(tlb),
+                        ub=float(tub),
                     )
                 )
 
-                ameal = max(round(self.random_gen.normal(mbar, msd)), 0)
+            actual_time = self._sample_actual_time(
+                announced_time=float(announced_time),
+                lb=float(tlb),
+                ub=float(tub),
+            )
 
-                if self.deterministic_meal_time:
-                    tmeal = np.round(tbar)
-                if self.deterministic_meal_size:
-                    ameal = round(mbar)
+            announced_amount = float(round(mbar))
+            actual_amount = self._sample_amount(float(mbar))
 
-                scenario["meal"]["time"].append(int(tmeal))
-                scenario["meal"]["amount"].append(float(ameal))
+            announced["meal"]["time"].append(int(announced_time))
+            announced["meal"]["amount"].append(float(announced_amount))
 
-        # sort by time
-        pairs = sorted(zip(scenario["meal"]["time"], scenario["meal"]["amount"]))
-        scenario["meal"]["time"] = [t for t, _ in pairs]
-        scenario["meal"]["amount"] = [a for _, a in pairs]
-        return scenario
+            actual["meal"]["time"].append(int(actual_time))
+            actual["meal"]["amount"].append(float(actual_amount))
+
+        announced_pairs = sorted(zip(announced["meal"]["time"], announced["meal"]["amount"]))
+        actual_pairs = sorted(zip(actual["meal"]["time"], actual["meal"]["amount"]))
+
+        announced["meal"]["time"] = [int(t) for t, _ in announced_pairs]
+        announced["meal"]["amount"] = [float(a) for _, a in announced_pairs]
+
+        actual["meal"]["time"] = [int(t) for t, _ in actual_pairs]
+        actual["meal"]["amount"] = [float(a) for _, a in actual_pairs]
+
+        return announced, actual
 
     def get_action(self, t):
         delta_t = t - datetime.combine(t.date(), datetime.min.time())
         t_sec = delta_t.total_seconds()
 
-        # regenerate each day
+        # Regenerate each day.
         if t_sec < 1:
-            self.scenario = self.create_scenario()
+            self.announced_scenario, self.scenario = self.create_scenario()
 
         t_min = int(np.floor(t_sec / 60.0))
 
@@ -188,7 +288,28 @@ class SemiRandomHarrisonBenedictScenario(Scenario):
         return Action(meal=0)
 
     def get_meal_schedule(self) -> list[tuple[int, float]]:
-        return list(zip(self.scenario["meal"]["time"], self.scenario["meal"]["amount"]))
+        """
+        Backward-compatible: return announced schedule.
+
+        The wrapper should use this for meal_warning and meal_size.
+        """
+        return self.get_announced_meal_schedule()
+
+    def get_announced_meal_schedule(self) -> list[tuple[int, float]]:
+        return list(
+            zip(
+                self.announced_scenario["meal"]["time"],
+                self.announced_scenario["meal"]["amount"],
+            )
+        )
+
+    def get_actual_meal_schedule(self) -> list[tuple[int, float]]:
+        return list(
+            zip(
+                self.scenario["meal"]["time"],
+                self.scenario["meal"]["amount"],
+            )
+        )
 
 DEFAULT_MEALS = [
     (7 * 60, 45.0),
