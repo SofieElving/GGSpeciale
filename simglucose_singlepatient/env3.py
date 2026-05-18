@@ -326,7 +326,6 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         return self.unwrapped.env.env.show_history().reset_index()
     
     def clear_history(self):
-        print("HISTORY CLEARED")
         self.history = []
         self.history_index = 0
 
