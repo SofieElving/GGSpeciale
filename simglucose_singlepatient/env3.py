@@ -73,7 +73,7 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         self.cgm_index = int(cgm_index)
         self.normalize = bool(normalize)
         self.max_insulin_action = float(max_insulin_action)
-        self.history = pd.DataFrame()
+        self.history = []
         self.history_index = 0
 
         self.meal_schedule: list[tuple[int, float]] = []
@@ -98,15 +98,8 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
 
     def reset(self, **kwargs):
         new_history = self._get_history()
-        new_history["eval_index"] = self.history_index
-
-        self.history = (
-            pd.concat([self.history, new_history], ignore_index=True)
-            if not self.history.empty
-            else new_history
-        )
-        self.history_index += 1
-
+        self.history.append(new_history)
+        #self.history_index += 1
 
         obs, info = self.env.reset(**kwargs)
 
@@ -231,7 +224,7 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
             raw_action=raw_policy_action,
             policy_action=policy_action,
         )
-        
+
         return wrapped_obs, reward, terminated, truncated, info
 
     def _build_obs_and_features(self, obs: Any) -> tuple[np.ndarray, dict[str, float]]:
@@ -334,7 +327,7 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
     
     def clear_history(self):
         print("HISTORY CLEARED")
-        self.history = pd.DataFrame()
+        self.history = []
         self.history_index = 0
 
 

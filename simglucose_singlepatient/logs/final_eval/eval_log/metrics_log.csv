@@ -1,0 +1,2 @@
+eval_index,TBR_II,TBR_I,TIR,TAR_I,TAR_II,total_daily_insulin,average_insulin,critical_failure_rate,num_timesteps,mean_reward,std_reward,n_eval_episodes
+0,13.970588235294118,27.205882352941174,72.79411764705883,0.0,0.0,12.490575,0.09184246323529413,100.0,,-1083.885498046875,0.0,5
