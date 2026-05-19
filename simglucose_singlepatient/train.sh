@@ -27,9 +27,9 @@ PATIENTS=(
 "adult#010"
 )
 
-REWARD_TYPE="positive"
+REWARD_TYPE="strict"
 TIMESTEPS=3000000
-BASE_DIR="./teacher_models_bb_random_disturbed"
+BASE_DIR="./teacher_models_benchmark_shield"
 
 PATIENT=${PATIENTS[$SLURM_ARRAY_TASK_ID]}
 SAFE_PATIENT="${PATIENT//#/-}"
@@ -40,9 +40,8 @@ python train3.py \
     --patient "$PATIENT" \
     --reward-type "$REWARD_TYPE" \
     --timesteps $TIMESTEPS \
-    --seed 42 \
     --outdir "${BASE_DIR}/${REWARD_TYPE}/${SAFE_PATIENT}" \
-    --scenario-mode "semi_random_hb" \
+    --scenario-mode "fixed_hb" \
     --time-std-multiplier 0.5 \
     --include-snacks \
     --amount-noise-std-fraction 0.10 \
@@ -60,4 +59,4 @@ python train3.py \
     --max-insulin-action 5 \
     --max-grad-norm 0.5 \
     --bb-warmup \
-    --shield-bg-threshold 10
+    --shield-bg-threshold 75

@@ -113,7 +113,7 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         self.bb_warmup_steps = int(bb_warmup_steps)
 
         # Aggregated SimGlucose history from completed episodes.
-        self.history = pd.DataFrame()
+        self.history: list[pd.DataFrame] = []
         self.history_index = 0
 
         # This is the announced meal schedule used for meal_warning and meal_size.
@@ -151,77 +151,86 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         self.control_step_count = 0
         self.iob = 0.0
         self.current_cgm = None
+        #RANDOM INIT INSTADT OF BALAS BOLUS INIT
+        if self.use_bb_warmup:
+            self.iob = float(np.random.default_rng().uniform(0.5, 1.0))
+            info["bb_warmup_failed"] = False
+            info["bb_warmup_iob_only"] = True
+        else:
+            self.iob = 0.0
+            info["bb_warmup_failed"] = False
+            info["bb_warmup_iob_only"] = False
 
         # Hidden BBController warm-up.
         # PPO does not see these steps. Plotting also starts after this block.
-        if self.use_bb_warmup and self.bb_warmup_steps > 0:
-            bb_controller = BBController()
-            bb_warmup_failed = False
+        # if self.use_bb_warmup and self.bb_warmup_steps > 0:
+        #     bb_controller = BBController()
+        #     bb_warmup_failed = False
 
-            last_reward = 0.0
-            last_done = False
+        #     last_reward = 0.0
+        #     last_done = False
 
-            for _ in range(self.bb_warmup_steps):
-                obs_arr = np.asarray(obs, dtype=np.float32).reshape(-1)
-                cgm = float(obs_arr[self.cgm_index])
+        #     for _ in range(self.bb_warmup_steps):
+        #         obs_arr = np.asarray(obs, dtype=np.float32).reshape(-1)
+        #         cgm = float(obs_arr[self.cgm_index])
 
-                # BBController expects a SimGlucose-like observation with .CGM.
-                controller_obs = SimpleNamespace(CGM=cgm)
+        #         # BBController expects a SimGlucose-like observation with .CGM.
+        #         controller_obs = SimpleNamespace(CGM=cgm)
 
-                try:
-                    controller_action = bb_controller.policy(
-                        controller_obs,
-                        last_reward,
-                        last_done,
-                        **info,
-                    )
-                except TypeError:
-                    controller_action = bb_controller.policy(
-                        controller_obs,
-                        last_reward,
-                        last_done,
-                    )
+        #         try:
+        #             controller_action = bb_controller.policy(
+        #                 controller_obs,
+        #                 last_reward,
+        #                 last_done,
+        #                 **info,
+        #             )
+        #         except TypeError:
+        #             controller_action = bb_controller.policy(
+        #                 controller_obs,
+        #                 last_reward,
+        #                 last_done,
+        #             )
 
-                if hasattr(controller_action, "basal") or hasattr(controller_action, "bolus"):
-                    basal = float(getattr(controller_action, "basal", 0.0))
-                    bolus = float(getattr(controller_action, "bolus", 0.0))
+        #         if hasattr(controller_action, "basal") or hasattr(controller_action, "bolus"):
+        #             basal = float(getattr(controller_action, "basal", 0.0))
+        #             bolus = float(getattr(controller_action, "bolus", 0.0))
 
-                    # The Gym wrapper sends one scalar action.
-                    # Basal is used directly. Bolus is spread over one env step.
-                    bb_insulin = basal + bolus / max(self.sample_time_min, 1e-6)
-                else:
-                    bb_insulin = float(
-                        np.asarray(controller_action, dtype=np.float32).reshape(-1)[0]
-                    )
+        #             # The Gym wrapper sends one scalar action.
+        #             # Basal is used directly. Bolus is spread over one env step.
+        #             bb_insulin = basal + bolus / max(self.sample_time_min, 1e-6)
+        #         else:
+        #             bb_insulin = float(
+        #                 np.asarray(controller_action, dtype=np.float32).reshape(-1)[0]
+        #             )
 
-                bb_insulin = float(np.clip(bb_insulin, 0.0, self.max_insulin_action))
-                bb_action = np.array([bb_insulin], dtype=np.float32)
+        #         bb_insulin = float(np.clip(bb_insulin, 0.0, self.max_insulin_action))
+        #         bb_action = np.array([bb_insulin], dtype=np.float32)
 
-                decay = np.exp(-self.sample_time_min / self.insulin_tau_min)
-                self.iob = float(self.iob * decay + max(0.0, bb_insulin))
+        #         decay = np.exp(-self.sample_time_min / self.insulin_tau_min)
+        #         self.iob = float(self.iob * decay + max(0.0, bb_insulin))
 
-                obs, reward, terminated, truncated, info = self.env.step(bb_action)
+        #         obs, reward, terminated, truncated, info = self.env.step(bb_action)
 
-                last_reward = float(reward)
-                last_done = bool(terminated or truncated)
+        #         last_reward = float(reward)
+        #         last_done = bool(terminated or truncated)
 
-                if "sample_time" in info:
-                    try:
-                        self.sample_time_min = float(info["sample_time"])
-                    except Exception:
-                        pass
+        #         if "sample_time" in info:
+        #             try:
+        #                 self.sample_time_min = float(info["sample_time"])
+        #             except Exception:
+        #                 pass
 
-                if terminated or truncated:
-                    bb_warmup_failed = True
-                    break
+        #         if terminated or truncated:
+        #             bb_warmup_failed = True
+        #             break
 
-            if bb_warmup_failed:
-                obs, info = self.env.reset(**kwargs)
-                self.iob = 0.0
-                self.current_cgm = None
-                info["bb_warmup_failed"] = True
-            else:
-                info["bb_warmup_failed"] = False
+        #     if bb_warmup_failed:
+        #         obs, info = self.env.reset(**kwargs)
+        #         self.iob = 0.0
+        #         self.current_cgm = None
+        #         info["bb_warmup_failed"] = True
+        #     else:
+        #         info["bb_warmup_failed"] = False
 
         # Important for semi_random_hb:
         # This syncs the announced meal schedule, not necessarily the actual delivered one.
@@ -522,22 +531,12 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         )
 
     def _get_history(self) -> pd.DataFrame:
-        """
-        Return the raw SimGlucose simulator history for the current episode.
-
-        The nested path is the same one you used before:
-            self.unwrapped.env.env.show_history()
-        """
-        return self.unwrapped.env.env.show_history().reset_index()
+            """
+            Return raw SimGlucose simulator history for the current episode.
+            """
+            return self.unwrapped.env.env.show_history().reset_index()
 
     def _store_current_history(self) -> None:
-        """
-        Append the current underlying SimGlucose history to self.history.
-
-        Called at the start of reset(), because reset() usually clears the
-        simulator's internal history. The first reset may happen before any useful
-        history exists, so failures or empty histories are ignored.
-        """
         try:
             new_history = self._get_history()
         except Exception:
@@ -547,9 +546,24 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
             return
 
         new_history = new_history.copy()
-        self.history.append(new_history)
 
-    def clear_history(self):
+        self.history.append(new_history)
+        self.history_index += 1
+
+
+    def get_history_df(self) -> pd.DataFrame:
+        if len(self.history) == 0:
+            return pd.DataFrame()
+
+        return pd.concat(
+            self.history,
+            axis=0,
+            keys=range(len(self.history)),
+        )
+
+
+    def clear_history(self) -> None:
+        print("HISTORY CLEARED")
         self.history = []
         self.history_index = 0
 
@@ -625,7 +639,7 @@ def make_simglucose_spid_env(
         sim_scenario = SemiRandomHarrisonBenedictScenario(
             patient_name=patient_name,
             start_time=start_time,
-            seed=seed,
+            seed=None,#seed,
             time_std_multiplier=time_std_multiplier,
             include_snacks=include_snacks,
             amount_noise_std_fraction=amount_noise_std_fraction,

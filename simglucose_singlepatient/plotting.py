@@ -205,7 +205,7 @@ class SimglucoseProgressPlotCallback(BaseCallback):
 
         axes[0].axhline(70, color="black", linestyle="--", linewidth=1)
         axes[0].axhline(180, color="black", linestyle="--", linewidth=1)
-        axes[0].axhline(50, color="blue", linestyle=":", linewidth=1, label="Shield threshold")
+        axes[0].axhline(75, color="blue", linestyle=":", linewidth=1, label="Shield threshold")
 
         # Mark shield activations on CGM panel.
         shield_times = [

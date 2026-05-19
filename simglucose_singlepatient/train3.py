@@ -28,6 +28,7 @@ import json
 import warnings
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from evaluate import EvalInsulinPolicy
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
@@ -118,9 +119,6 @@ def make_env_fn(
             shield_bg_threshold=shield_bg_threshold,
             use_bb_warmup=use_bb_warmup,
         )
-
-        if seed is not None:
-            env.action_space.seed(seed)
 
         return env
 
@@ -297,7 +295,7 @@ def main() -> None:
         actual_time_noise_std_min=args.actual_time_noise_std_min,
         actual_time_noise_clip_min=args.actual_time_noise_clip_min,
         timesteps=args.timesteps,
-        seed=args.seed,
+        seed=None,#args.seed,
         max_episode_steps=args.max_episode_steps,
         outdir=args.outdir,
         learning_rate=args.learning_rate,
@@ -331,7 +329,7 @@ def main() -> None:
         json.dump(asdict(config), f, indent=2)
     tmp_config_path.replace(config_path)
 
-    train_seed = config.seed
+    train_seed = None#config.seed
     eval_seed = None# if config.seed is None else config.seed + 10_000
     progress_seed = None #if config.seed is None else config.seed + 20_000
 
@@ -435,9 +433,20 @@ def main() -> None:
         best_model_save_path=str(outdir / "models" / "best"),
         log_path=str(outdir / "eval"),
         eval_freq=10_000,
-        deterministic=True,
+        deterministic=False,
         render=False,
         n_eval_episodes=5,
+        verbose=1,
+    )
+    insulin_eval_callback = EvalInsulinPolicy(
+        eval_env=eval_env,
+        eval_freq=100_000,
+        n_eval_episodes=5,
+        save_path=str(outdir / "insulin_eval"),
+        save_history=True,
+        generate_report=True,
+        deterministic=False,
+        render=False,
         verbose=1,
     )
 
@@ -462,7 +471,12 @@ def main() -> None:
 
     model.learn(
         total_timesteps=config.timesteps,
-        callback=[checkpoint_callback, eval_callback, progress_callback],
+        callback=[
+            checkpoint_callback,
+            eval_callback,
+            progress_callback,
+            insulin_eval_callback,
+        ],
         progress_bar=True,
         tb_log_name="ppo_simglucose",
     )
