@@ -30,7 +30,7 @@ class EvalInsulinPolicy(EvalCallback):
         eval_env,
         eval_freq=10_000,
         n_eval_episodes=5,
-        save_path="./logs/test/",
+        save_path="./100_eval_best",
         save_history=False,
         generate_report=True, 
         best_model_save_path="./logs/test/best_model",
@@ -94,7 +94,18 @@ class EvalInsulinPolicy(EvalCallback):
             print("Evaluating model...")
              
         history_list = self.eval_env.get_attr("history")[0]
-        history_df = pd.concat(history_list, axis=0, keys=range(len(history_list)))
+
+        max_steps = self.eval_env.get_attr("spec")[0].max_episode_steps
+        print(max_steps)
+
+        max_steps = 480
+        episode_steps = [len(episode) for episode in history_list]
+        critical_failure_rate = np.mean(np.array(episode_steps) < max_steps)*100
+
+        history_list_survivors = [hist for hist in history_list if len(hist) >= max_steps]
+        n_survivors = len(history_list_survivors)
+
+        history_df = pd.concat(history_list_survivors , axis=0, keys=range(len(history_list_survivors)))
         history_df.index.names = ["episode", "step"]
 
         if history_df.empty:
@@ -114,13 +125,12 @@ class EvalInsulinPolicy(EvalCallback):
 
         metrics = compute_scores(history_df)
 
-        max_steps = self.eval_env.get_attr("spec")[0].max_episode_steps
-        episode_steps = [len(episode) for episode in history_list]
-        critical_failure_rate = np.mean(np.array(episode_steps) < max_steps)*100
+
 
         latest_rewards = self.latest_rewards
         rewards = {
             "critical_failure_rate" : float(critical_failure_rate),
+            "survivors" : int(n_survivors),
             "num_timesteps": int(self.num_timesteps),
             "mean_reward": float(np.mean(latest_rewards)),
             "std_reward": float(np.std(latest_rewards)),
@@ -258,7 +268,7 @@ def evaluate_insulin_policy(
         model,
         eval_env,
         n_eval_episodes=n_eval_episodes,
-        deterministic=deterministic,
+        deterministic=False,
         render=render,
         return_episode_rewards=True,
         warn=warn,

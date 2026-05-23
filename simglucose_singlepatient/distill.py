@@ -37,8 +37,10 @@ sys.path.insert(0, str(SPID_PATH))
 from gmDAGGER import train_spid
 
 from stable_baselines3 import PPO
+from stable_baselines3.common.vec_env import DummyVecEnv, VecMonitor
 
 from env3 import make_simglucose_spid_env
+from evaluate import evaluate_insulin_policy
 from meal_scenarios import DEFAULT_MEALS, parse_meal_schedule
 
 
@@ -99,8 +101,7 @@ def build_argparser() -> argparse.ArgumentParser:
         choices=["fixed", "fixed_hb", "semi_random_hb"],
     )
 
-    # Used for reproducible bookkeeping / optional deterministic scenarios.
-    # For stochastic semi_random_hb distillation, leave --scenario-seed unset.
+    # For stochastic semi_random_hb, leave --scenario-seed unset.
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--scenario-seed", type=int, default=None)
 
@@ -108,18 +109,32 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument("--warning-window-min", type=float, default=20.0)
     parser.add_argument("--insulin-tau-min", type=float, default=55.0)
     parser.add_argument("--sample-time-min", type=float, default=3.0)
+
     parser.add_argument("--time-std-multiplier", type=float, default=0.5)
     parser.add_argument("--include-snacks", action="store_true")
+    parser.add_argument("--amount-noise-std-fraction", type=float, default=0.15)
+    parser.add_argument("--actual-time-noise-std-min", type=float, default=0.0)
+    parser.add_argument("--actual-time-noise-clip-min", type=float, default=30.0)
 
     # Must match teacher training exactly.
-    # If the PPO teacher was trained with I_max=5.0, use 5.0.
-    # If it was trained with I_max=1.0, use 1.0.
     parser.add_argument("--max-insulin-action", type=float, default=5.0)
+    parser.add_argument("--shield-bg-threshold", type=float, default=10.0)
+
+    # In your current env, this may mean random initial IOB instead of real BB warm-up.
+    parser.add_argument("--bb-warmup", action="store_true")
 
     parser.add_argument("--n-iter", type=int, default=12)
     parser.add_argument("--total-timesteps", type=int, default=12_000)
-    parser.add_argument("--n-eval-episodes", type=int, default=10)
+    parser.add_argument("--n-eval-episodes", type=int, default=100)
     parser.add_argument("--verbose", type=int, default=2)
+
+    # Distilled-policy evaluation after distillation
+    parser.add_argument("--no-distilled-eval", action="store_true")
+    parser.add_argument("--distilled-eval-episodes", type=int, default=None)
+    parser.add_argument("--distilled-eval-deterministic", action="store_true")
+    parser.add_argument("--distilled-eval-stochastic", action="store_true")
+    parser.add_argument("--no-report", action="store_true")
+    parser.add_argument("--save-history", action="store_true")
 
     parser.add_argument(
         "--skip-missing",
@@ -157,6 +172,47 @@ def find_teacher_model(
     )
 
 
+def make_eval_env_for_patient(
+    patient: str,
+    safe_patient: str,
+    meals: list[tuple[int, float]],
+    args: argparse.Namespace,
+):
+    """
+    Evaluation env for the distilled symbolic policy.
+
+    Uses VecMonitor(DummyVecEnv(...)) because your evaluate_insulin_policy()
+    is built around SB3 evaluate_policy, which supports Env or VecEnv objects.
+    """
+    eval_env_id = f"simglucose-spid-distilled-eval-{safe_patient}-v0"
+
+    eval_env = DummyVecEnv([
+        lambda: make_simglucose_spid_env(
+            patient_name=patient,
+            meal_schedule=meals,
+            env_id=eval_env_id,
+            max_episode_steps=args.max_episode_steps,
+            normalize=True,
+            scenario_mode=args.scenario_mode,
+            seed=args.scenario_seed,
+            warning_window_min=args.warning_window_min,
+            insulin_tau_min=args.insulin_tau_min,
+            sample_time_min=args.sample_time_min,
+            time_std_multiplier=args.time_std_multiplier,
+            include_snacks=args.include_snacks,
+            amount_noise_std_fraction=args.amount_noise_std_fraction,
+            actual_time_noise_std_min=args.actual_time_noise_std_min,
+            actual_time_noise_clip_min=args.actual_time_noise_clip_min,
+            reward_type=args.reward_type,
+            max_insulin_action=args.max_insulin_action,
+            shield_bg_threshold=args.shield_bg_threshold,
+            use_bb_warmup=args.bb_warmup,
+        )
+    ])
+
+    return VecMonitor(eval_env)
+
+
 def run_distillation_for_patient(
     patient: str,
     teacher_model_path: Path,
@@ -189,8 +245,13 @@ def run_distillation_for_patient(
             sample_time_min=args.sample_time_min,
             time_std_multiplier=args.time_std_multiplier,
             include_snacks=args.include_snacks,
+            amount_noise_std_fraction=args.amount_noise_std_fraction,
+            actual_time_noise_std_min=args.actual_time_noise_std_min,
+            actual_time_noise_clip_min=args.actual_time_noise_clip_min,
             reward_type=args.reward_type,
             max_insulin_action=args.max_insulin_action,
+            shield_bg_threshold=args.shield_bg_threshold,
+            use_bb_warmup=args.bb_warmup,
         )
 
     save_folder_path = save_root / args.reward_type / safe_patient
@@ -203,6 +264,8 @@ def run_distillation_for_patient(
     print(f"Scenario seed: {args.scenario_seed}")
     print(f"Reward type: {args.reward_type}")
     print(f"Max insulin action / I_max: {args.max_insulin_action}")
+    print(f"Shield BG threshold: {args.shield_bg_threshold}")
+    print(f"Use BB warmup / random initial IOB: {args.bb_warmup}")
     print(f"Max episode steps: {args.max_episode_steps}")
     print("=" * 80 + "\n")
 
@@ -221,6 +284,63 @@ def run_distillation_for_patient(
     print(f"\nFinished distillation for {patient}.")
     print(f"Saved to: {run_dir}")
 
+    if args.no_distilled_eval:
+        print("Skipping distilled-policy evaluation because --no-distilled-eval was used.")
+        return
+
+    eval_episodes = (
+        args.distilled_eval_episodes
+        if args.distilled_eval_episodes is not None
+        else args.n_eval_episodes
+    )
+
+    if args.distilled_eval_deterministic and args.distilled_eval_stochastic:
+        raise ValueError(
+            "Use only one of --distilled-eval-deterministic or "
+            "--distilled-eval-stochastic."
+        )
+
+    # For symbolic policies, deterministic=True is usually appropriate.
+    eval_deterministic = True
+    if args.distilled_eval_stochastic:
+        eval_deterministic = False
+    if args.distilled_eval_deterministic:
+        eval_deterministic = True
+
+    print("\nEvaluating distilled policy...")
+    print(f"Eval episodes: {eval_episodes}")
+    print(f"Eval deterministic: {eval_deterministic}")
+
+    eval_env = make_eval_env_for_patient(
+        patient=patient,
+        safe_patient=safe_patient,
+        meals=meals,
+        args=args,
+    )
+
+    eval_save_path = Path(run_dir) / "distilled_eval"
+
+    try:
+        eval_results = evaluate_insulin_policy(
+            model=best_policy,
+            eval_env=eval_env,
+            n_eval_episodes=100,
+            deterministic=False,
+            save_path=eval_save_path,
+            save_history=True,
+            generate_report=not args.no_report,
+            verbose=1,
+            clear_history_before=True,
+            clear_history_after=True,
+        )
+
+        print("\nDistilled evaluation metrics:")
+        print(eval_results["metrics"])
+        print(f"Distilled evaluation saved to: {eval_save_path}")
+
+    finally:
+        eval_env.close()
+
 
 def main() -> None:
     warnings.filterwarnings("ignore")
@@ -236,6 +356,21 @@ def main() -> None:
     if not teacher_root.exists():
         raise FileNotFoundError(f"Teacher root does not exist: {teacher_root}")
 
+    if args.max_insulin_action <= 0:
+        raise ValueError("--max-insulin-action must be > 0.")
+
+    if args.shield_bg_threshold <= 0:
+        raise ValueError("--shield-bg-threshold must be > 0.")
+
+    if args.amount_noise_std_fraction < 0:
+        raise ValueError("--amount-noise-std-fraction must be >= 0.")
+
+    if args.actual_time_noise_std_min < 0:
+        raise ValueError("--actual-time-noise-std-min must be >= 0.")
+
+    if args.actual_time_noise_clip_min < 0:
+        raise ValueError("--actual-time-noise-clip-min must be >= 0.")
+
     save_root.mkdir(parents=True, exist_ok=True)
 
     print("\n=== DISTILL ALL PATIENTS CONFIG ===")
@@ -247,9 +382,12 @@ def main() -> None:
     print(f"scenario_mode: {args.scenario_mode}")
     print(f"scenario_seed: {args.scenario_seed}")
     print(f"max_insulin_action / I_max: {args.max_insulin_action}")
+    print(f"shield_bg_threshold: {args.shield_bg_threshold}")
+    print(f"bb_warmup / random initial IOB: {args.bb_warmup}")
     print(f"n_iter: {args.n_iter}")
     print(f"total_timesteps: {args.total_timesteps}")
-    print(f"n_eval_episodes: {args.n_eval_episodes}")
+    print(f"n_eval_episodes during distillation: {args.n_eval_episodes}")
+    print(f"distilled eval enabled: {not args.no_distilled_eval}")
     print("===================================\n")
 
     for patient in patients:

@@ -53,15 +53,14 @@ def main() -> None:
             patient=patient,
             meals=meals,
             max_episode_steps=args.max_episode_steps,
-            seed=123,
             scenario_mode=args.scenario_mode,
 
             # Fixed/eval settings
-            time_std_multiplier=0.0,
-            include_snacks=False,
-            amount_noise_std_fraction=0.0,
-            actual_time_noise_clip_min=0.0,
-            actual_time_noise_std_min=0.0,
+            time_std_multiplier=0.5,
+            include_snacks=True,
+            amount_noise_std_fraction=0.1,
+            actual_time_noise_clip_min=5.0,
+            actual_time_noise_std_min=15.0,
 
             # Must match training setup where relevant
             reward_type=args.reward_type,
@@ -69,7 +68,7 @@ def main() -> None:
             insulin_tau_min=55,
             sample_time_min=3,
             max_insulin_action=args.max_insulin_action,
-            use_bb_warmup=False,
+            use_bb_warmup=True,
             shield_bg_threshold=args.shield_bg_threshold,
         )
     ])
@@ -93,7 +92,12 @@ def main() -> None:
         eval_env,
         save_path=str(save_path),
         n_eval_episodes=args.n_eval_episodes,
-        deterministic=args.deterministic,
+        deterministic=False,
+        save_history=True,
+        generate_report=True,
+        verbose=1,
+        clear_history_before=True,
+        clear_history_after=True,
     )
 
     eval_env.close()

@@ -99,14 +99,26 @@ def glucose_insulin_reward(
 
     # Peak at 110 mg/dL
     #target_reward = 1.2*(1.0 - ((bg - 110.0) / 50.0) ** 2)
-    target_reward = 5 * np.exp(-((bg - 115.0) / 30.0) ** 2)
+    # target_reward = 5 * np.exp(-((bg - 140.0) / 30.0) ** 2)
+
+    # # Smoothly increasing penalties
+    # low_penalty = 3.0 * softplus((70.0 - bg) / 9.0) ** 2
+    # severe_low_penalty = 6.0 * softplus((54.0 - bg) / 6.0) ** 2
+
+    # high_penalty = 1.5 * softplus((bg - 180.0) / 22.0) ** 2
+    # severe_high_penalty = 3.0 * softplus((bg - 250.0) / 15.0) ** 2
+
+
+    # Peak at 110 mg/dL
+    target_reward = 10 * np.exp(-((bg - 140.0) / 50.0) ** 2)
 
     # Smoothly increasing penalties
     low_penalty = 3.0 * softplus((70.0 - bg) / 9.0) ** 2
     severe_low_penalty = 6.0 * softplus((54.0 - bg) / 6.0) ** 2
 
-    high_penalty = 1.5 * softplus((bg - 180.0) / 22.0) ** 2
-    severe_high_penalty = 3.0 * softplus((bg - 250.0) / 15.0) ** 2
+    high_penalty = 1.5 * softplus((bg - 180.0) / 40.0) ** 2
+    severe_high_penalty = 3.0 * softplus((bg - 250.0) / 40.0) ** 2
+    
 
     return float(
         target_reward

@@ -145,8 +145,9 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
     def reset(self, **kwargs):
         # Store previous simulator trajectory before env.reset() clears it.
         self._store_current_history()
-
         obs, info = self.env.reset(**kwargs)
+
+        obs = self.unwrapped.env.reset()
 
         self.control_step_count = 0
         self.iob = 0.0
@@ -313,6 +314,7 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         self.iob = float(self.iob * decay + max(0.0, delivered))
 
         obs, reward, terminated, truncated, info = self.env.step(sim_action)
+        print(f"obs: {obs}")
 
         if "sample_time" in info:
             try:
@@ -361,9 +363,9 @@ class SimglucoseFeatureWrapper(gym.Wrapper):
         reward = float(reward)
 
         if raw_cgm < 40.0 or raw_cgm > 400.0:
-            reward -= 1000.0
+            #reward -= 1000.0
             # Keep this commented if you intentionally do not want early termination:
-            # terminated = True
+            terminated = True
             info["terminal_reason"] = "cgm_out_of_bounds"
 
         info["original_reward"] = original_reward
@@ -610,11 +612,8 @@ def make_simglucose_spid_env(
         raise ValueError("actual_time_noise_clip_min skal være >= 0.")
 
     bb_warmup_steps = 0
-    if use_bb_warmup:
-        bb_warmup_steps = int(round(BB_WARMUP_MINUTES / float(sample_time_min)))
-        bb_warmup_steps = max(0, bb_warmup_steps)
 
-    registered_max_episode_steps = int(max_episode_steps + bb_warmup_steps)
+    registered_max_episode_steps = int(max_episode_steps)
 
     start_time = datetime(2018, 1, 1, 0, 0, 0)
 

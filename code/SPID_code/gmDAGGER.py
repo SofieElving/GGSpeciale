@@ -233,8 +233,17 @@ def train_spid(
 
         env = create_env(environment, hf_repo_id, vecnormalize_path)
         srr_test = PySRPolicy(env, 
-                              binary_operators=["+", "*", "-"],
-                              unary_operators = ["square", "exp", "cos", "sin", "sqrt","log"],
+                              binary_operators=["+", "*", "-", "/"],
+                              unary_operators=["square", "sin", "cos", "exp", "log", "sqrt"],
+                              nested_constraints={"sin": {"sin": 2, "cos": 0}, "cos": {"sin": 0, "cos": 2},            "square": {"square": 1, "exp": 0},
+            "exp": {"square": 1, "exp": 0, "log": 0},
+            "log": {"exp": 0, "log": 0},
+            "sqrt": {"sqrt": 1, "square": 0}},
+                                      complexity_of_operators = {
+            "+": 1, "-": 1, "*": 1, "/": 2,
+            "cos": 2, "sin": 2, "exp": 3, "log": 3,
+            "square": 1, "sqrt": 2
+        },
                               #populations=64, 
                               maxsize=18, 
                               #niterations=100, 

@@ -441,7 +441,7 @@ def main() -> None:
     insulin_eval_callback = EvalInsulinPolicy(
         eval_env=eval_env,
         eval_freq=100_000,
-        n_eval_episodes=5,
+        n_eval_episodes=100,
         save_path=str(outdir / "insulin_eval"),
         save_history=True,
         generate_report=True,
