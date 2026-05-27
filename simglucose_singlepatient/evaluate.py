@@ -8,6 +8,7 @@ from stable_baselines3.common.callbacks import EvalCallback, BaseCallback
 from stable_baselines3.common.monitor import Monitor
 import gymnasium as gym
 from simglucose.analysis.report import report
+from scipy.stats import beta as beta_dist
 
 import json
 from pathlib import Path
@@ -68,6 +69,7 @@ class EvalInsulinPolicy(EvalCallback):
 
     def _on_step(self) -> bool:
         if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
+            self.eval_env.env_method("clear_history")
             episode_rewards, episode_lengths = evaluate_policy(
                 self.model,
                 self.eval_env,
@@ -95,18 +97,28 @@ class EvalInsulinPolicy(EvalCallback):
              
         history_list = self.eval_env.get_attr("history")[0]
 
-        max_steps = self.eval_env.get_attr("spec")[0].max_episode_steps
-        print(max_steps)
+        #max_steps = self.eval_env.get_attr("spec")[0].max_episode_steps
+        #print(max_steps)
 
         max_steps = 480
         episode_steps = [len(episode) for episode in history_list]
         critical_failure_rate = np.mean(np.array(episode_steps) < max_steps)*100
 
         history_list_survivors = [hist for hist in history_list if len(hist) >= max_steps]
+        if len(history_list_survivors) > 0:
+            history_df = pd.concat(
+                history_list_survivors,
+                axis=0,
+                keys=range(len(history_list_survivors))
+            )
+            history_df.index.names = ["episode", "step"]
+        else:
+            history_df = pd.DataFrame()
+
         n_survivors = len(history_list_survivors)
 
-        history_df = pd.concat(history_list_survivors , axis=0, keys=range(len(history_list_survivors)))
-        history_df.index.names = ["episode", "step"]
+        #history_df = pd.concat(history_list_survivors , axis=0, keys=range(len(history_list_survivors)))
+        
 
         if history_df.empty:
             if self.verbose > 0:
@@ -158,7 +170,59 @@ class EvalInsulinPolicy(EvalCallback):
             report_df = report_df.set_index("Time", append=True)
             report_df.index.names = ["episode", "Time"]
 
-            report(report_df, save_path=report_dir)
+            #report(report_df, save_path=report_dir)
+            results, ri_per_hour, zone_stats, figs, axes = report(
+                report_df,
+                save_path=report_dir,
+            )
+
+            fig_ensemble = figs[0]
+            ax1, ax2, ax3 = axes[:3]
+
+            # Colored sections based on litterature
+            for ax in [ax1, ax2]:
+                old_ylim = ax.get_ylim()
+
+                ax.axhspan(0, 54, color="red", alpha=0.20, zorder=0, label="_nolegend_")
+                ax.axhspan(54, 70, color="orange", alpha=0.20, zorder=0, label="_nolegend_")
+                ax.axhspan(70, 180, color="green", alpha=0.15, zorder=0, label="_nolegend_")
+                ax.axhspan(180, 250, color="orange", alpha=0.20, zorder=0, label="_nolegend_")
+                ax.axhspan(250, 600, color="red", alpha=0.20, zorder=0, label="_nolegend_")
+
+                ax.set_ylim(old_ylim)
+
+                # Keep existing traces/lines above the colored background
+                for line in ax.lines:
+                    line.set_zorder(3)
+
+            fig_ensemble.set_size_inches(8, 6)
+
+            for ax in [ax1, ax2]:
+                legend = ax.get_legend()
+
+                if legend is not None:
+                    legend.set_bbox_to_anchor((1.02, 1.0))
+                    legend._loc = 2
+
+                    for text in legend.get_texts():
+                        text.set_fontsize(7)
+
+            # Preserve titles and make room for outside legends
+            fig_ensemble.subplots_adjust(
+                top=0.9,
+                right=0.78,
+                hspace=0.20,
+            )
+
+            # Optional: add title padding if ax1 has a title
+            if ax1.get_title():
+                ax1.set_title(ax1.get_title(), pad=12)
+
+            fig_ensemble.savefig(
+                report_dir / "BG_trace.png",
+                dpi=300,
+                bbox_inches="tight",
+            )
 
         self.eval_index += 1
         
@@ -293,7 +357,8 @@ def evaluate_insulin_policy(
     metrics = compute_scores(history_df)
 
     spec = _get_env_attr(eval_env, "spec", default=None)
-    max_steps = getattr(spec, "max_episode_steps", None)
+    #max_steps = getattr(spec, "max_episode_steps", None)
+    max_steps = 480 # debugging remove if multiday
 
     if max_steps is not None:
         episode_steps = np.array([len(episode) for episode in history_list])
@@ -355,7 +420,60 @@ def evaluate_insulin_policy(
             report_df = report_df.set_index("Time", append=True)
             report_df.index.names = ["episode", "Time"]
 
-            report(report_df, save_path=report_dir)
+            results, ri_per_hour, zone_stats, figs, axes = report(
+                report_df,
+                save_path=report_dir,
+            )
+
+            fig_ensemble = figs[0]
+            ax1, ax2, ax3 = axes[:3]
+
+
+            # Colored sections based on litterature
+            for ax in [ax1, ax2]:
+                old_ylim = ax.get_ylim()
+
+                ax.axhspan(0, 54, color="red", alpha=0.20, zorder=0, label="_nolegend_")
+                ax.axhspan(54, 70, color="orange", alpha=0.20, zorder=0, label="_nolegend_")
+                ax.axhspan(70, 180, color="green", alpha=0.15, zorder=0, label="_nolegend_")
+                ax.axhspan(180, 250, color="orange", alpha=0.20, zorder=0, label="_nolegend_")
+                ax.axhspan(250, 600, color="red", alpha=0.20, zorder=0, label="_nolegend_")
+
+                ax.set_ylim(old_ylim)
+
+                # Keep existing traces/lines above the colored background
+                for line in ax.lines:
+                    line.set_zorder(3)
+
+
+            fig_ensemble.set_size_inches(8, 6)
+
+            for ax in [ax1, ax2]:
+                legend = ax.get_legend()
+
+                if legend is not None:
+                    legend.set_bbox_to_anchor((1.02, 1.0))
+                    legend._loc = 2
+
+                    for text in legend.get_texts():
+                        text.set_fontsize(7)
+
+            # Preserve titles and make room for outside legends
+            fig_ensemble.subplots_adjust(
+                top=0.9,
+                right=0.78,
+                hspace=0.20,
+            )
+
+            # Optional: add title padding if ax1 has a title
+            if ax1.get_title():
+                ax1.set_title(ax1.get_title(), pad=12)
+
+            fig_ensemble.savefig(
+                report_dir / "BG_trace.png",
+                dpi=300,
+                bbox_inches="tight",
+            )
 
     if clear_history_after:
         _call_env_method(eval_env, "clear_history")
