@@ -1,13 +1,48 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
+from typing import Any
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecMonitor
 
 from train3 import make_env_fn
 from evaluate import evaluate_insulin_policy
+
+
+CONFIG_KEYS = [
+    "max_episode_steps",
+    "time_std_multiplier",
+    "amount_noise_std_fraction",
+    "actual_time_noise_std_min",
+    "actual_time_noise_clip_min",
+]
+
+
+def load_eval_config(model_dir: Path) -> dict[str, Any]:
+    config_path = model_dir / "train_config.json"
+
+    if not config_path.exists():
+        raise FileNotFoundError(f"Could not find config file: {config_path}")
+
+    with config_path.open("r") as f:
+        config = json.load(f)
+
+    missing = [key for key in CONFIG_KEYS if key not in config]
+    if missing:
+        raise KeyError(
+            f"Missing required config keys in {config_path}: {missing}"
+        )
+
+    return {
+        "max_episode_steps": int(config["max_episode_steps"]),
+        "time_std_multiplier": float(config["time_std_multiplier"]),
+        "amount_noise_std_fraction": float(config["amount_noise_std_fraction"]),
+        "actual_time_noise_std_min": float(config["actual_time_noise_std_min"]),
+        "actual_time_noise_clip_min": float(config["actual_time_noise_clip_min"]),
+    }
 
 
 def main() -> None:
@@ -18,8 +53,7 @@ def main() -> None:
     parser.add_argument("--reward-type", type=str, required=True)
 
     parser.add_argument("--scenario-mode", type=str, default="fixed_hb")
-    parser.add_argument("--n-eval-episodes", type=int, default=10)
-    parser.add_argument("--max-episode-steps", type=int, default=480)
+    parser.add_argument("--n-eval-episodes", type=int, default=100)
 
     parser.add_argument("--deterministic", action="store_true")
     parser.add_argument("--shield-bg-threshold", type=float, default=10.0)
@@ -37,6 +71,14 @@ def main() -> None:
     if not model_path.exists():
         raise FileNotFoundError(f"Could not find model: {model_path}")
 
+    eval_config = load_eval_config(model_dir)
+
+    max_episode_steps = eval_config["max_episode_steps"]
+    time_std_multiplier = eval_config["time_std_multiplier"]
+    amount_noise_std_fraction = eval_config["amount_noise_std_fraction"]
+    actual_time_noise_std_min = eval_config["actual_time_noise_std_min"]
+    actual_time_noise_clip_min = eval_config["actual_time_noise_clip_min"]
+
     save_path.mkdir(parents=True, exist_ok=True)
 
     meals = [
@@ -51,16 +93,19 @@ def main() -> None:
         make_env_fn(
             env_id=f"simglucose-spid-eval-{safe_patient}-v0",
             patient=patient,
+            seed=123,
             meals=meals,
-            max_episode_steps=args.max_episode_steps,
+            max_episode_steps=max_episode_steps,
             scenario_mode=args.scenario_mode,
 
+            # Loaded from train_config.json
+            time_std_multiplier=time_std_multiplier,
+            amount_noise_std_fraction=amount_noise_std_fraction,
+            actual_time_noise_clip_min=actual_time_noise_clip_min,
+            actual_time_noise_std_min=actual_time_noise_std_min,
+
             # Fixed/eval settings
-            time_std_multiplier=0.5,
             include_snacks=True,
-            amount_noise_std_fraction=0.1,
-            actual_time_noise_clip_min=5.0,
-            actual_time_noise_std_min=15.0,
 
             # Must match training setup where relevant
             reward_type=args.reward_type,
@@ -78,11 +123,18 @@ def main() -> None:
     print("=" * 80)
     print(f"Evaluating patient: {patient}")
     print(f"Model: {model_path}")
+    print(f"Config: {model_dir / 'train_config.json'}")
     print(f"Save path: {save_path}")
     print(f"Reward type: {args.reward_type}")
     print(f"Scenario mode: {args.scenario_mode}")
     print(f"Deterministic: {args.deterministic}")
     print(f"Shield threshold: {args.shield_bg_threshold}")
+    print(f"Max insulin action: {args.max_insulin_action}")
+    print(f"Max episode steps: {max_episode_steps}")
+    print(f"Time std multiplier: {time_std_multiplier}")
+    print(f"Amount noise std fraction: {amount_noise_std_fraction}")
+    print(f"Actual time noise std min: {actual_time_noise_std_min}")
+    print(f"Actual time noise clip min: {actual_time_noise_clip_min}")
     print("=" * 80)
 
     model = PPO.load(str(model_path), env=eval_env)
@@ -92,12 +144,13 @@ def main() -> None:
         eval_env,
         save_path=str(save_path),
         n_eval_episodes=args.n_eval_episodes,
-        deterministic=False,
+        deterministic=args.deterministic,
         save_history=True,
         generate_report=True,
         verbose=1,
         clear_history_before=True,
         clear_history_after=True,
+        max_steps=max_episode_steps,
     )
 
     eval_env.close()

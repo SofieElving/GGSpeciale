@@ -188,7 +188,12 @@ def train_spid(
         hf_repo_id=None,
         hf_filename=None,
         hf_algo=None,
-        vecnormalize_path=None
+        vecnormalize_path=None,
+        binary_operators=["+", "*", "-", "/", "<", ">"],
+        unary_operators=["square", "exp", "log", "sqrt"],
+        maxsize=18,
+        maxdepth=None,
+        nested_constraints=None,
     ):
     
     # print(f"Training SPID on {env_name}")
@@ -233,20 +238,23 @@ def train_spid(
 
         env = create_env(environment, hf_repo_id, vecnormalize_path)
         srr_test = PySRPolicy(env, 
-                              binary_operators=["+", "*", "-", "/"],
-                              unary_operators=["square", "sin", "cos", "exp", "log", "sqrt"],
-                              nested_constraints={"sin": {"sin": 2, "cos": 0}, "cos": {"sin": 0, "cos": 2},            "square": {"square": 1, "exp": 0},
-            "exp": {"square": 1, "exp": 0, "log": 0},
-            "log": {"exp": 0, "log": 0},
-            "sqrt": {"sqrt": 1, "square": 0}},
-                                      complexity_of_operators = {
-            "+": 1, "-": 1, "*": 1, "/": 2,
-            "cos": 2, "sin": 2, "exp": 3, "log": 3,
-            "square": 1, "sqrt": 2
-        },
+                              binary_operators=binary_operators,
+                              unary_operators=unary_operators,
+                              #unary_operators=["square", "sin", "cos", "exp", "log", "sqrt"],
+        #                       nested_constraints={"sin": {"sin": 2, "cos": 0}, "cos": {"sin": 0, "cos": 2},            "square": {"square": 1, "exp": 0},
+        #     "exp": {"square": 1, "exp": 0, "log": 0},
+        #     "log": {"exp": 0, "log": 0},
+        #     "sqrt": {"sqrt": 1, "square": 0}},
+        #                               complexity_of_operators = {
+        #     "+": 1, "-": 1, "*": 1, "/": 2,
+        #     "cos": 2, "sin": 2, "exp": 3, "log": 3,
+        #     "square": 1, "sqrt": 2
+        # },
                               #populations=64, 
-                              maxsize=18, 
+                              nested_constraints=nested_constraints,
+                              maxsize=maxsize, 
                               #niterations=100, 
+                              maxdepth=maxdepth,
                               verbosity=0, 
                               temp_equation_file=False,
                               delete_tempfiles=True,
@@ -269,7 +277,7 @@ def train_spid(
             srr_test,
             eval_env,
             n_eval_episodes=n_eval_episodes,
-            deterministic=True,
+            deterministic=False,
         )
 
         eval_env.close()
@@ -306,7 +314,7 @@ def train_spid(
         teacher,
         teacher_eval_env,
         n_eval_episodes=final_n_val_episodes,
-        deterministic=True,
+        deterministic=False,
     )
     teacher_eval_env.close()
 
@@ -316,7 +324,7 @@ def train_spid(
         best_wrapper,
         student_eval_env,
         n_eval_episodes=final_n_val_episodes,
-        deterministic=True,
+        deterministic=False,
     )
     student_eval_env.close()
 
@@ -446,10 +454,10 @@ def sample_trajectory(
             action, _states = active_policy.predict(obs)
             pysr_actions += 1
         else:
-            action, _states = active_policy.predict(obs, deterministic=True)
+            action, _states = active_policy.predict(obs, deterministic=False)
             oracle_actions += 1
 
-        oracle_action, _states = teacher.predict(obs, deterministic=True)
+        oracle_action, _states = teacher.predict(obs, deterministic=False)
 
         # Normalize policy action for Gym Pendulum / VecEnv
         # action = np.asarray(action, dtype=np.float32)
@@ -585,7 +593,7 @@ def get_advantage_weights(
                                 print(f"SAC actor call method 2 failed: {e2}")
                                 # Fallback through expert.predict; returns numpy on CPU
                                 next_states_np = next_states_t.detach().cpu().numpy()
-                                next_actions_np, _ = expert.predict(next_states_np, deterministic=True)
+                                next_actions_np, _ = expert.predict(next_states_np, deterministic=False)
                                 next_actions = to_tensor(next_actions_np, dtype=torch.float32)
                     else:
                         actor_output = expert.policy.actor(next_states_t)

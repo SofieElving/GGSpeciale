@@ -1,9 +1,9 @@
 from __future__ import annotations
-
+import json
 import argparse
+import importlib
 import os
 import sys
-import json
 import warnings
 from pathlib import Path
 
@@ -13,21 +13,19 @@ import numpy as np
 # ---------------------------------------------------------------------
 # IMPORTANT for PySR / JuliaCall / gmDAGGER
 # Must be set before gmDAGGER / juliacall is imported.
-# Still preferably set these in the SLURM script too.
 # ---------------------------------------------------------------------
 
 os.environ.setdefault("PYTHON_JULIACALL_HANDLE_SIGNALS", "yes")
 os.environ.setdefault("PYTHONFAULTHANDLER", "1")
 os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
 
-# Conservative thread settings reduce Julia/PyTorch/BLAS conflicts on SLURM.
 os.environ.setdefault("JULIA_NUM_THREADS", "1")
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
-from juliacall import Main as jl
+from juliacall import Main as jl  # noqa: F401
 
 
 # ---------------------------------------------------------------------
@@ -37,80 +35,68 @@ from juliacall import Main as jl
 SPID_PATH = Path(__file__).resolve().parents[1] / "code" / "SPID_code"
 sys.path.insert(0, str(SPID_PATH))
 
-# Keep gmDAGGER before stable_baselines3.
-# stable_baselines3 imports torch; gmDAGGER/PySR may import juliacall.
 from gmDAGGER_safe import train_spid
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecMonitor
 
-try:
-    from env3 import make_simglucose_spid_env, REWARD_FNS
-    REWARD_TYPE_CHOICES = list(REWARD_FNS.keys())
-except ImportError:
-    from env3 import make_simglucose_spid_env
-    REWARD_TYPE_CHOICES = ["default", "smooth", "strict", "steps", "positive", "clarke_risk"]
-
-from evaluate import evaluate_insulin_policy
+from evaluate2 import evaluate_insulin_policy
 from meal_scenarios import DEFAULT_MEALS, parse_meal_schedule
 
 
+ENV_CHOICES = (
+    "env_closed",
+    "env_open",
+    "env_closed_action_history",
+)
+
+
+NO_NESTING = {
+    "square": {"square": 0},
+}
+
+
 PYSR_CONFIGS = {
-    "very_simple": {
+    "linear_10": {
+        "binary_operators": ["+", "*", "-"],
+        "unary_operators": [],
+        "maxsize": 10,
+        "maxdepth": 3,
+    },
+
+    "square_10": {
         "binary_operators": ["+", "*", "-"],
         "unary_operators": ["square"],
         "maxsize": 10,
+        "maxdepth": 3,
+        "nested_constraints": NO_NESTING,
     },
 
-    "small_safe": {
-        "binary_operators": ["+", "*", "-", "/"],
-        "unary_operators": ["square", "sqrt"],
-        "maxsize": 12,
-    },
-
-    "medium_default_5": {
-        "binary_operators": ["+", "*", "-", "/", "<", ">"],
-        "unary_operators": ["square", "exp", "log", "sqrt"],
-        "maxsize": 5,
-    },
-
-    "medium_default_10": {
-        "binary_operators": ["+", "*", "-", "/", "<", ">"],
-        "unary_operators": ["square", "exp", "log", "sqrt"],
+    "square_threshold_10": {
+        "binary_operators": ["+", "*", "-", "<", ">"],
+        "unary_operators": ["square"],
         "maxsize": 10,
+        "maxdepth": 3,
+        "nested_constraints": NO_NESTING,
     },
 
-    "medium_default_15": {
-        "binary_operators": ["+", "*", "-", "/", "<", ">"],
-        "unary_operators": ["square", "exp", "log", "sqrt"],
+    "square_threshold_15": {
+        "binary_operators": ["+", "*", "-", "<", ">"],
+        "unary_operators": ["square"],
         "maxsize": 15,
+        "maxdepth": 3,
+        "nested_constraints": NO_NESTING,
     },
 
-    "medium_default_20": {
-        "binary_operators": ["+", "*", "-", "/", "<", ">"],
-        "unary_operators": ["square", "exp", "log", "sqrt"],
+    "square_threshold_20": {
+        "binary_operators": ["+", "*", "-", "<", ">"],
+        "unary_operators": ["square"],
         "maxsize": 20,
+        "maxdepth": 3,
+        "nested_constraints": NO_NESTING,
     },
 
-    "medium_default_25": {
-        "binary_operators": ["+", "*", "-", "/", "<", ">"],
-        "unary_operators": ["square", "exp", "log", "sqrt"],
-        "maxsize": 25,
-    },
-
-    "no_thresholds": {
-        "binary_operators": ["+", "*", "-", "/"],
-        "unary_operators": ["square", "exp", "log", "sqrt"],
-        "maxsize": 18,
-    },
-
-    "large_expressive": {
-        "binary_operators": ["+", "*", "-", "/", "<", ">"],
-        "unary_operators": ["square", "exp", "log", "sqrt", "sin", "cos"],
-        "maxsize": 24,
-    },
 }
-
 
 def parse_patient_list(text: str) -> list[str]:
     return [p.strip() for p in text.split(",") if p.strip()]
@@ -120,13 +106,90 @@ def safe_patient_name(patient: str) -> str:
     return patient.replace("#", "-")
 
 
+def parse_pysr_config_list(text: str) -> list[str]:
+    configs = [c.strip() for c in text.split(",") if c.strip()]
+    unknown = [c for c in configs if c not in PYSR_CONFIGS]
+
+    if unknown:
+        raise ValueError(
+            f"Unknown PySR config(s): {unknown}. "
+            f"Available: {list(PYSR_CONFIGS.keys())}"
+        )
+
+    return configs
+
+
+def load_env_module(env_name: str):
+    """
+    Load environment module.
+
+    First tries:
+        envs.<env_name>
+
+    Then falls back to:
+        <env_name>
+
+    This works whether your files are in envs/ or directly in the project root.
+    """
+    if env_name not in ENV_CHOICES:
+        raise ValueError(
+            f"Unknown --env={env_name!r}. Expected one of: {list(ENV_CHOICES)}"
+        )
+
+    module_candidates = [
+        f"envs.{env_name}",
+        env_name,
+    ]
+
+    errors = []
+
+    for module_path in module_candidates:
+        try:
+            module = importlib.import_module(module_path)
+            break
+
+        except ModuleNotFoundError as exc:
+            # Only suppress if the requested module itself is missing.
+            # If a dependency inside the module is missing, re-raise.
+            top_level = module_path.split(".")[0]
+            if exc.name not in {module_path, top_level}:
+                raise
+
+            errors.append(f"{module_path}: {exc}")
+
+    else:
+        raise ModuleNotFoundError(
+            f"Could not import environment {env_name!r}. Tried: {module_candidates}. "
+            f"Errors: {errors}"
+        )
+
+    required_attrs = ("REWARD_FNS", "make_simglucose_spid_env")
+    missing = [attr for attr in required_attrs if not hasattr(module, attr)]
+
+    if missing:
+        raise AttributeError(
+            f"Environment module {module.__name__!r} is missing required "
+            f"attribute(s): {missing}"
+        )
+
+    return module
+
+
 def build_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
+        "--env",
+        type=str,
+        default="env_closed",
+        choices=ENV_CHOICES,
+        help="Environment module to use.",
+    )
+
+    parser.add_argument(
         "--pysr-configs",
         type=str,
-        default="medium_default",
+        default="medium_default_10",
         help=(
             "Comma-separated PySR configs to test. "
             f"Available: {list(PYSR_CONFIGS.keys())}"
@@ -159,8 +222,8 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--reward-type",
         type=str,
-        default="smooth",
-        choices=REWARD_TYPE_CHOICES,
+        required=True,
+        help="Reward type. Valid options depend on the selected --env.",
     )
 
     parser.add_argument(
@@ -184,12 +247,10 @@ def build_argparser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Use one shared mixed-patient PPO teacher for all patient-specific "
-            "distillations. The path is resolved as "
-            "teacher_root / reward_type / adult-all / models / best / best_model.zip."
+            "distillations."
         ),
     )
 
-    # For stochastic semi_random_hb, leave --scenario-seed unset.
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--scenario-seed", type=int, default=None)
 
@@ -201,10 +262,7 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-normalize",
         action="store_true",
-        help=(
-            "Use raw open-loop observations instead of normalized observations. "
-            "Must match teacher training."
-        ),
+        help="Use raw observations instead of normalized observations.",
     )
 
     parser.add_argument("--time-std-multiplier", type=float, default=0.5)
@@ -213,11 +271,9 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument("--actual-time-noise-std-min", type=float, default=0.0)
     parser.add_argument("--actual-time-noise-clip-min", type=float, default=30.0)
 
-    # Must match teacher training exactly.
     parser.add_argument("--max-insulin-action", type=float, default=5.0)
     parser.add_argument("--shield-bg-threshold", type=float, default=10.0)
 
-    # In your current env, this may mean random initial IOB instead of real BB warm-up.
     parser.add_argument("--bb-warmup", action="store_true")
 
     parser.add_argument("--n-iter", type=int, default=12)
@@ -225,65 +281,21 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument("--n-eval-episodes", type=int, default=100)
     parser.add_argument("--verbose", type=int, default=2)
 
-    # gmDAGGER_safe / SPID sampling controls.
-    parser.add_argument(
-        "--skip-initial-steps",
-        type=int,
-        default=10,
-        help=(
-            "Execute but do not train on the first N post-reset steps of each sampled rollout. "
-            "Use this to remove initialization transients."
-        ),
-    )
+    parser.add_argument("--skip-initial-steps", type=int, default=10)
+    parser.add_argument("--sample-episodes", type=int, default=5)
+    parser.add_argument("--keep-terminal-transitions", action="store_true")
+    parser.add_argument("--keep-early-terminal-episodes", action="store_true")
+    parser.add_argument("--max-sampling-episodes", type=int, default=200)
 
-    parser.add_argument(
-        "--sample-episodes",
-        type=int,
-        default=5,
-        help=(
-            "Number of accepted non-terminal rollouts sampled per gmDAGGER iteration. "
-            "Set <= 0 to fall back to total_timesteps // n_iter sampling."
-        ),
-    )
-
-    parser.add_argument(
-        "--keep-terminal-transitions",
-        action="store_true",
-        help=(
-            "Store the transition that produces done=True. "
-            "Default is to exclude it from SPID training."
-        ),
-    )
-
-    parser.add_argument(
-        "--keep-early-terminal-episodes",
-        action="store_true",
-        help=(
-            "Keep episodes that terminate before max_episode_steps. "
-            "Default is to discard these runs entirely so SPID does not train on terminal failure episodes."
-        ),
-    )
-
-    parser.add_argument(
-        "--max-sampling-episodes",
-        type=int,
-        default=200,
-        help="Safety cap on attempted rollouts while collecting non-terminal SPID samples.",
-    )
-
-    # Distilled-policy evaluation after distillation.
     parser.add_argument("--no-distilled-eval", action="store_true")
     parser.add_argument("--distilled-eval-episodes", type=int, default=None)
-    parser.add_argument("--distilled-eval-deterministic", action="store_true")
-    parser.add_argument("--distilled-eval-stochastic", action="store_true")
+
+    # Intentionally no deterministic eval flag.
+    # Distilled evaluation is always stochastic / deterministic=False.
     parser.add_argument("--no-report", action="store_true")
     parser.add_argument("--save-history", action="store_true")
 
-    parser.add_argument(
-        "--skip-missing",
-        action="store_true",
-        help="Skip patients where teacher model is missing instead of raising an error.",
-    )
+    parser.add_argument("--skip-missing", action="store_true")
 
     return parser
 
@@ -347,7 +359,8 @@ def _assert_box_spaces_match(teacher_space, env_space, name: str) -> None:
     if teacher_shape != env_shape:
         raise ValueError(
             f"{name} shape mismatch: "
-            f"teacher={_format_space(teacher_space)} vs env={_format_space(env_space)}"
+            f"teacher={_format_space(teacher_space)} vs "
+            f"env={_format_space(env_space)}"
         )
 
     teacher_low = getattr(teacher_space, "low", None)
@@ -364,8 +377,9 @@ def _assert_box_spaces_match(teacher_space, env_space, name: str) -> None:
         if not np.allclose(teacher_low, env_low) or not np.allclose(teacher_high, env_high):
             raise ValueError(
                 f"{name} bounds mismatch: "
-                f"teacher={_format_space(teacher_space)} vs env={_format_space(env_space)}. "
-                "Use the same normalize/no-normalize setting, state space, and action scaling as teacher training."
+                f"teacher={_format_space(teacher_space)} vs "
+                f"env={_format_space(env_space)}. "
+                "Use the same environment, state space, normalization, and action scaling."
             )
 
 
@@ -399,62 +413,20 @@ def check_teacher_matches_env(teacher_model_path: Path, env) -> None:
     print("Teacher/env smoke test OK. First teacher action:", action_arr.tolist())
 
 
-def load_teacher_gamma_from_config(
-    teacher_root: Path,
-    reward_type: str,
-    patient: str,
-    default: float | None = None,
-) -> float | None:
-    """
-    Read gamma from:
-        teacher_root / reward_type / patient / training_config.json
-
-    For normal patient-specific teachers, patient is e.g. adult#003.
-    For shared teacher, patient should be adult-all.
-    """
-    safe_patient = safe_patient_name(patient)
-    config_path = teacher_root / reward_type / safe_patient / "training_config.json"
-
-    if not config_path.exists():
-        print(
-            f"WARNING: Missing training config: {config_path}. "
-            f"Using default gamma={default}."
-        )
-        return default
-
-    with config_path.open("r") as f:
-        config = json.load(f)
-
-    gamma = config.get("gamma", default)
-
-    if gamma is None:
-        print(
-            f"WARNING: No gamma found in {config_path}. "
-            f"Using default gamma={default}."
-        )
-        return default
-
-    gamma = float(gamma)
-    print(f"Loaded teacher gamma={gamma} from {config_path}")
-    return gamma
-
-
 def make_eval_env_for_patient(
+    *,
+    env_factory,
+    env_name: str,
     patient: str,
     safe_patient: str,
     meals: list[tuple[int, float]],
     args: argparse.Namespace,
 ):
-    """
-    Evaluation env for the distilled symbolic policy.
-
-    Uses VecMonitor(DummyVecEnv(...)) because evaluate_insulin_policy()
-    is built around SB3 evaluate_policy, which supports Env or VecEnv objects.
-    """
-    eval_env_id = f"simglucose-spid-open-distilled-eval-{safe_patient}-v0"
+    env_id_prefix = env_name.replace("_", "-")
+    eval_env_id = f"simglucose-spid-{env_id_prefix}-distilled-eval-{safe_patient}-v0"
 
     eval_env = DummyVecEnv([
-        lambda: make_simglucose_spid_env(
+        lambda: env_factory(
             patient_name=patient,
             meal_schedule=meals,
             env_id=eval_env_id,
@@ -481,25 +453,27 @@ def make_eval_env_for_patient(
 
 
 def run_distillation_for_patient(
+    *,
     patient: str,
     teacher_model_path: Path,
     save_root: Path,
+    env_factory,
+    env_name: str,
     args: argparse.Namespace,
 ) -> None:
     safe_patient = safe_patient_name(patient)
     meals = parse_meal_schedule(args.meals, DEFAULT_MEALS)
 
     env_counter = 0
+    env_id_prefix = env_name.replace("_", "-")
 
     def environment():
         nonlocal env_counter
         env_counter += 1
 
-        # Unique env_id avoids Gymnasium registry collisions during repeated
-        # gmDAGGER environment construction.
-        env_id = f"simglucose-spid-open-distill-{safe_patient}-{env_counter}-v0"
+        env_id = f"simglucose-spid-{env_id_prefix}-distill-{safe_patient}-{env_counter}-v0"
 
-        return make_simglucose_spid_env(
+        return env_factory(
             patient_name=patient,
             meal_schedule=meals,
             env_id=env_id,
@@ -524,22 +498,18 @@ def run_distillation_for_patient(
     save_folder_path = save_root / args.reward_type / safe_patient
 
     print("\n" + "=" * 80)
-    print(f"Distilling open-loop patient: {patient}")
+    print(f"Distilling patient: {patient}")
+    print(f"Environment: {env_name}")
     print(f"Teacher: {teacher_model_path}")
     print(f"Save folder: {save_folder_path}")
     print(f"PySR configs: {args.pysr_configs}")
     print(f"Scenario mode: {args.scenario_mode}")
     print(f"Scenario seed: {args.scenario_seed}")
     print(f"Normalize observations: {not args.no_normalize}")
-    print(
-        f"Observation state: "
-        f"{'normalized open-loop observation' if not args.no_normalize else 'raw open-loop observation'}"
-    )
-    print("Environment: env3 / open-loop")
     print(f"Reward type: {args.reward_type}")
     print(f"Max insulin action / I_max: {args.max_insulin_action}")
     print(f"Shield BG threshold: {args.shield_bg_threshold}")
-    print(f"Use BB warmup / random initial IOB: {args.bb_warmup}")
+    print(f"Use BB warmup: {args.bb_warmup}")
     print(f"Max episode steps: {args.max_episode_steps}")
     print(f"Skip first SPID samples after reset: {args.skip_initial_steps}")
     print(f"Accepted rollout samples per gmDAGGER iteration: {args.sample_episodes}")
@@ -547,21 +517,27 @@ def run_distillation_for_patient(
     print(f"Discard early-terminal episodes: {not args.keep_early_terminal_episodes}")
     print("=" * 80 + "\n")
 
-    # Preflight check: catches wrong state-space model before gmDAGGER starts.
     preflight_env = environment()
     try:
         check_teacher_matches_env(teacher_model_path, preflight_env)
     finally:
         preflight_env.close()
+    
+    selected_config_names = parse_pysr_config_list(args.pysr_configs)
 
-    gamma_config_patient = "adult-all" if args.use_shared_teacher else patient
+    if len(selected_config_names) != 1:
+        raise ValueError(
+            "This script expects exactly one PySR config per run. "
+            f"Got: {selected_config_names}"
+        )
 
-    teacher_gamma = load_teacher_gamma_from_config(
-        teacher_root=Path(args.teacher_root),
-        reward_type=args.reward_type,
-        patient=gamma_config_patient,
-        default=None,
-    )
+    selected_config_name = selected_config_names[0]
+    selected_pysr_config = PYSR_CONFIGS[selected_config_name]
+
+    print("=" * 80)
+    print(f"Using PySR config: {selected_config_name}")
+    print(json.dumps(selected_pysr_config, indent=2))
+    print("=" * 80)
 
     rewards, best_policy, wrapper, run_dir = train_spid(
         teacher_path=str(teacher_model_path),
@@ -579,7 +555,9 @@ def run_distillation_for_patient(
         discard_early_terminal_episodes=not args.keep_early_terminal_episodes,
         max_episode_steps=args.max_episode_steps,
         max_sampling_episodes=args.max_sampling_episodes,
-        # diagnostics_gamma=teacher_gamma,
+        pysr_config=selected_pysr_config,
+        pysr_config_name=selected_config_name,
+        max_insulin_action=args.max_insulin_action,
     )
 
     print(f"\nFinished distillation for {patient}.")
@@ -595,26 +573,15 @@ def run_distillation_for_patient(
         else args.n_eval_episodes
     )
 
-    if args.distilled_eval_deterministic and args.distilled_eval_stochastic:
-        raise ValueError(
-            "Use only one of --distilled-eval-deterministic or "
-            "--distilled-eval-stochastic."
-        )
-
-    # For symbolic policies, deterministic=True is usually appropriate.
-    eval_deterministic = True
-
-    if args.distilled_eval_stochastic:
-        eval_deterministic = False
-
-    if args.distilled_eval_deterministic:
-        eval_deterministic = True
+    eval_deterministic = False
 
     print("\nEvaluating distilled policy...")
     print(f"Eval episodes: {eval_episodes}")
     print(f"Eval deterministic: {eval_deterministic}")
 
     eval_env = make_eval_env_for_patient(
+        env_factory=env_factory,
+        env_name=env_name,
         patient=patient,
         safe_patient=safe_patient,
         meals=meals,
@@ -645,16 +612,14 @@ def run_distillation_for_patient(
         eval_env.close()
 
 
-def main() -> None:
-    warnings.filterwarnings("ignore")
-    args = build_argparser().parse_args()
+def validate_args(args: argparse.Namespace, reward_fns: dict[str, object]) -> None:
+    parse_pysr_config_list(args.pysr_configs)
 
-    teacher_root = Path(args.teacher_root)
-    save_root = Path(args.save_root)
-    patients = parse_patient_list(args.patients)
-
-    if len(patients) == 0:
-        raise ValueError("No patients provided.")
+    if args.reward_type not in reward_fns:
+        raise ValueError(
+            f"Unknown --reward-type={args.reward_type!r} for --env={args.env!r}. "
+            f"Expected one of: {list(reward_fns.keys())}"
+        )
 
     if args.skip_initial_steps < 0:
         raise ValueError("--skip-initial-steps must be >= 0.")
@@ -664,9 +629,6 @@ def main() -> None:
 
     if args.max_sampling_episodes <= 0:
         raise ValueError("--max-sampling-episodes must be > 0.")
-
-    if not teacher_root.exists():
-        raise FileNotFoundError(f"Teacher root does not exist: {teacher_root}")
 
     if args.max_insulin_action <= 0:
         raise ValueError("--max-insulin-action must be > 0.")
@@ -683,9 +645,41 @@ def main() -> None:
     if args.actual_time_noise_clip_min < 0:
         raise ValueError("--actual-time-noise-clip-min must be >= 0.")
 
+    if args.max_episode_steps <= 0:
+        raise ValueError("--max-episode-steps must be > 0.")
+
+    if args.n_iter <= 0:
+        raise ValueError("--n-iter must be > 0.")
+
+    if args.total_timesteps <= 0:
+        raise ValueError("--total-timesteps must be > 0.")
+
+
+def main() -> None:
+    warnings.filterwarnings("ignore")
+
+    args = build_argparser().parse_args()
+
+    env_module = load_env_module(args.env)
+    reward_fns = env_module.REWARD_FNS
+    env_factory = env_module.make_simglucose_spid_env
+
+    validate_args(args, reward_fns)
+
+    teacher_root = Path(args.teacher_root)
+    save_root = Path(args.save_root)
+    patients = parse_patient_list(args.patients)
+
+    if len(patients) == 0:
+        raise ValueError("No patients provided.")
+
+    if not teacher_root.exists():
+        raise FileNotFoundError(f"Teacher root does not exist: {teacher_root}")
+
     save_root.mkdir(parents=True, exist_ok=True)
 
-    print("\n=== DISTILL OPEN-LOOP PATIENTS CONFIG ===")
+    print("\n=== DISTILL PATIENTS CONFIG ===")
+    print(f"environment: {args.env}")
     print(f"teacher_root: {teacher_root}")
     print(f"save_root: {save_root}")
     print(f"patients: {patients}")
@@ -700,14 +694,9 @@ def main() -> None:
     print(f"scenario_mode: {args.scenario_mode}")
     print(f"scenario_seed: {args.scenario_seed}")
     print(f"normalize observations: {not args.no_normalize}")
-    print(
-        f"observation state: "
-        f"{'normalized open-loop observation' if not args.no_normalize else 'raw open-loop observation'}"
-    )
-    print("environment: env3 / open-loop")
     print(f"max_insulin_action / I_max: {args.max_insulin_action}")
     print(f"shield_bg_threshold: {args.shield_bg_threshold}")
-    print(f"bb_warmup / random initial IOB: {args.bb_warmup}")
+    print(f"bb_warmup: {args.bb_warmup}")
     print(f"n_iter: {args.n_iter}")
     print(f"total_timesteps: {args.total_timesteps}")
     print(f"skip_initial_steps: {args.skip_initial_steps}")
@@ -717,7 +706,8 @@ def main() -> None:
     print(f"max_sampling_episodes: {args.max_sampling_episodes}")
     print(f"n_eval_episodes during distillation: {args.n_eval_episodes}")
     print(f"distilled eval enabled: {not args.no_distilled_eval}")
-    print("=========================================\n")
+    print("Distilled evaluation deterministic: False")
+    print("================================\n")
 
     for patient in patients:
         if args.use_shared_teacher:
@@ -746,10 +736,12 @@ def main() -> None:
             patient=patient,
             teacher_model_path=teacher_model_path,
             save_root=save_root,
+            env_factory=env_factory,
+            env_name=args.env,
             args=args,
         )
 
-    print("\nAll requested open-loop distillations complete.")
+    print("\nAll requested distillations complete.")
 
 
 if __name__ == "__main__":

@@ -23,6 +23,7 @@ from rewards_smooth import glucose_insulin_reward as reward_smooth
 from rewards_steps import glucose_insulin_reward as reward_steps
 from rewards_strict import glucose_insulin_reward as reward_strict
 from rewards_positive import glucose_insulin_reward as reward_positive
+from rewards_clarke_risk import glucose_insulin_reward as reward_clarke_risk
 
 
 REWARD_FNS: dict[str, Any] = {
@@ -31,7 +32,9 @@ REWARD_FNS: dict[str, Any] = {
     "strict": reward_strict,
     "steps": reward_steps,
     "positive": reward_positive,
+    "clarke_risk" : reward_clarke_risk,
 }
+
 
 
 # Hardcoded BBController warm-up duration.

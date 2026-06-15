@@ -1,21 +1,53 @@
-from typing import Optional, Tuple
-
+from typing import Callable, Optional
 import numpy as np
 from joblib import load, dump
+from pysr import PySRRegressor
 
-from pysr import PySRRegressor 
+
+ActionTransform = Callable[[np.ndarray], np.ndarray]
 
 
-#Wrapper around our extracted decision tree, mostly so that we can use the sb policy evaluator
+def identity_action_transform(actions: np.ndarray) -> np.ndarray:
+    return actions
+
+
+def proposed_insulin_to_raw_action(insulin, max_insulin_action=5):
+    """
+    Convert predicted insulin dose [0, max_insulin_action]
+    back to env action [-1, 1].
+
+    Inverse of:
+        insulin = max_insulin_action * exp(4 * (a - 1))
+    """
+    if max_insulin_action <= 0:
+        raise ValueError("max_insulin_action must be positive.")
+
+    u = np.asarray(insulin, dtype=np.float32)
+
+    min_insulin = max_insulin_action * np.exp(-8.0)
+
+    u = np.nan_to_num(
+        u,
+        nan=min_insulin,
+        posinf=max_insulin_action,
+        neginf=min_insulin,
+    )
+
+    u = np.clip(u, min_insulin, max_insulin_action)
+    raw_action = 1.0 + np.log(u / max_insulin_action) / 4.0
+    raw_action = np.clip(raw_action, -1.0, 1.0)
+
+    return raw_action.astype(np.float32)
+
 class PySRWrapper:
     def __init__(self, sr: PySRRegressor):
         self.sr = sr
 
     def predict(self, obs, state=None, episode_start=None, deterministic=True):
-        a = self.sr.predict(obs)  # could be (n_envs,) or scalar
-        a = np.asarray(a, dtype=np.float32).reshape(-1, 1)  # (n_envs, 1)
+        a = self.sr.predict(obs)
+        a = np.asarray(a, dtype=np.float32).reshape(-1, 1)
         return a
-    
+
     def fit(self, x, y, weights=None):
         self.sr.fit(x, y, weights=weights)
 
@@ -28,14 +60,21 @@ class PySRWrapper:
         dump(self.sr, path)
 
     def print_info(self):
-        # TODO: implement info print here. Complexity....
         print("Ain't been done")
         print(self.sr)
 
+
 class PySRPolicy:
-    def __init__(self, env, **kwargs):
-        #self.shape = env.action_space.shape[0]
-        self.shape = int(np.prod(env.action_space.shape))
+    def __init__(
+        self,
+        env,
+        action_transform: Optional[ActionTransform] = None,
+        **kwargs
+    ):
+        self.shape = env.action_space.shape[0]
+        self.action_space = env.action_space
+
+        self.action_transform = action_transform or identity_action_transform
 
         self.policy_list = [
             PySRWrapper(PySRRegressor(**kwargs))
@@ -43,25 +82,28 @@ class PySRPolicy:
         ]
 
     def predict(self, obs, state=None, episode_start=None, deterministic=True):
-        obs = np.asarray(obs)
+        obs = np.asarray(obs, dtype=np.float32)
 
         # Ensure obs is 2D: (n_envs, obs_dim)
-        # if obs.ndim == 1:
-        #     obs = obs.reshape(1, -1)
-        
         if obs.ndim == 1:
             obs = obs.reshape(1, -1)
-        elif obs.ndim > 2:
-            obs = obs.reshape(obs.shape[0], -1)
 
         preds = []
         for policy in self.policy_list:
             p = policy.predict(obs)
-            p = np.asarray(p).reshape(-1)   # force shape (n_envs,)
+            p = np.asarray(p, dtype=np.float32).reshape(-1)
             preds.append(p)
 
-        # Stack into shape (n_envs, action_dim)
-        actions = np.stack(preds, axis=1)
+        # Shape: (n_envs, action_dim)
+        actions = np.stack(preds, axis=1).astype(np.float32)
+
+        # Apply optional post-processing
+        actions = self.action_transform(actions)
+        actions = np.asarray(actions, dtype=np.float32)
+
+        # Safety: ensure final shape is still valid
+        actions = actions.reshape(obs.shape[0], self.shape)
+
         return actions, state
 
     def fit(self, x, y, weights=None):
@@ -69,18 +111,16 @@ class PySRPolicy:
             policy.fit(x, actions, weights)
 
     def print_info(self):
-        # TODO: print model summary
-        pass
+        for i, policy in enumerate(self.policy_list):
+            print(f"Action dimension {i}:")
+            policy.print_info()
 
     def save(self, path):
-        # TODO: figure out how to save (and load) model correctly, such that it is each to reload and use
-        # Potentially just do as above, and save model as a PySRPolicy class??
         dump(self, path)
 
-    def load(path):
-        policy = load(path)
-        print("Policy loaded")
-        return policy
+    @classmethod
+    def load(cls, path):
+        return load(path)
 
 
 # import numpy as np

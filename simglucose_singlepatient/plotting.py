@@ -16,11 +16,12 @@ import os
 from pathlib import Path
 from typing import Callable
 
+import matplotlib
+matplotlib.use("Agg")  # safe for cluster/headless runs
 import matplotlib.pyplot as plt
 import numpy as np
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.vec_env import VecEnv
-
 
 class SimglucoseProgressPlotCallback(BaseCallback):
     def __init__(
@@ -195,7 +196,7 @@ class SimglucoseProgressPlotCallback(BaseCallback):
         # 4 panels: CGM, meal, insulin/proposed/shield, IOB.
         fig, axes = plt.subplots(4, 1, figsize=(11, 9), sharex=True)
 
-        axes[0].plot(times, cgms, linewidth=2, label="CGM")
+        axes[0].plot(times, cgms, linewidth=2)
 
         axes[0].axhspan(0, 54, color="red", alpha=0.20)
         axes[0].axhspan(54, 70, color="orange", alpha=0.20)
@@ -205,7 +206,7 @@ class SimglucoseProgressPlotCallback(BaseCallback):
 
         axes[0].axhline(70, color="black", linestyle="--", linewidth=1)
         axes[0].axhline(180, color="black", linestyle="--", linewidth=1)
-        axes[0].axhline(75, color="blue", linestyle=":", linewidth=1, label="Shield threshold")
+        axes[0].axhline(75, color="blue", linestyle=":", linewidth=1)
 
         # Mark shield activations on CGM panel.
         shield_times = [
@@ -221,7 +222,7 @@ class SimglucoseProgressPlotCallback(BaseCallback):
             axes[0].scatter(
                 shield_times,
                 shield_cgm_values,
-                label="Shield",
+                #label="Shield",
                 marker="x",
                 s=40,
             )
@@ -238,12 +239,12 @@ class SimglucoseProgressPlotCallback(BaseCallback):
         )
         axes[0].legend(loc="upper right")
 
-        axes[1].plot(times, meals, label="Måltid")
-        axes[1].set_ylabel("Måltid")
+        axes[1].plot(times, meals)
+        axes[1].set_ylabel("Meals")
         axes[1].legend(loc="upper right")
 
-        axes[2].plot(times, proposed_insulins, label="Foreslået insulin", linestyle="--")
-        axes[2].plot(times, shielded_insulins, label="Leveret insulin")
+        #axes[2].plot(times, proposed_insulins, label="Foreslået insulin", linestyle="--")
+        axes[2].plot(times, shielded_insulins)
 
         shield_insulin_values = [
             y for y, active in zip(shielded_insulins, shield_active)
@@ -254,7 +255,7 @@ class SimglucoseProgressPlotCallback(BaseCallback):
             axes[2].scatter(
                 shield_times,
                 shield_insulin_values,
-                label="Shield aktiv",
+                #label="Shield aktiv",
                 marker="x",
                 s=40,
             )
@@ -262,9 +263,9 @@ class SimglucoseProgressPlotCallback(BaseCallback):
         axes[2].set_ylabel("Insulin")
         axes[2].legend(loc="upper right")
 
-        axes[3].plot(times, iobs, label="IOB")
+        axes[3].plot(times, iobs)
         axes[3].set_ylabel("IOB")
-        axes[3].set_xlabel("Tid (min)")
+        axes[3].set_xlabel("Time (min)")
         axes[3].legend(loc="upper right")
 
         png_path = self.save_dir / f"progress_{self.num_timesteps:08d}.png"
@@ -280,3 +281,112 @@ class SimglucoseProgressPlotCallback(BaseCallback):
             print(f"Gemte progress-plot: {png_path}")
             print(f"Opdaterede metrics-fil: {self.metrics_path}")
             print(json.dumps(metrics, indent=2))
+
+
+
+
+class RewardCurveCallback(BaseCallback):
+    """
+    Tracks episode rewards during training and repeatedly updates:
+      - reward_curve.png
+      - reward_curve.csv
+
+    Works well with Monitor / VecMonitor because it reads info["episode"]["r"].
+    """
+
+    def __init__(
+        self,
+        save_dir,
+        plot_freq=10_000,
+        rolling_window=25,
+        verbose=0,
+    ):
+        super().__init__(verbose)
+        self.save_dir = Path(save_dir)
+        self.plot_freq = int(plot_freq)
+        self.rolling_window = int(rolling_window)
+
+        self.episode_timesteps = []
+        self.episode_rewards = []
+        self.episode_lengths = []
+
+        self.plot_path = self.save_dir / "reward_curve.png"
+        self.csv_path = self.save_dir / "reward_curve.csv"
+
+    def _init_callback(self) -> None:
+        self.save_dir.mkdir(parents=True, exist_ok=True)
+
+    def _on_step(self) -> bool:
+        infos = self.locals.get("infos", [])
+
+        for info in infos:
+            episode_info = info.get("episode")
+            if episode_info is not None:
+                self.episode_timesteps.append(self.num_timesteps)
+                self.episode_rewards.append(float(episode_info["r"]))
+                self.episode_lengths.append(int(episode_info["l"]))
+
+        if (
+            len(self.episode_rewards) > 0
+            and self.num_timesteps % self.plot_freq == 0
+        ):
+            self._save_csv()
+            self._save_plot()
+
+        return True
+
+    def _on_training_end(self) -> None:
+        if len(self.episode_rewards) > 0:
+            self._save_csv()
+            self._save_plot()
+
+    def _rolling_mean(self, values):
+        values = np.asarray(values, dtype=float)
+        if len(values) < self.rolling_window:
+            return None
+
+        kernel = np.ones(self.rolling_window) / self.rolling_window
+        return np.convolve(values, kernel, mode="valid")
+
+    def _save_csv(self):
+        with self.csv_path.open("w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["episode", "timestep", "reward", "episode_length"])
+
+            for i, (t, r, l) in enumerate(
+                zip(
+                    self.episode_timesteps,
+                    self.episode_rewards,
+                    self.episode_lengths,
+                )
+            ):
+                writer.writerow([i, t, r, l])
+
+    def _save_plot(self):
+        rewards = np.asarray(self.episode_rewards, dtype=float)
+        timesteps = np.asarray(self.episode_timesteps, dtype=int)
+
+        plt.figure(figsize=(10, 5))
+        plt.plot(timesteps, rewards, alpha=0.35, label="Episode reward")
+
+        rolling = self._rolling_mean(rewards)
+        if rolling is not None:
+            rolling_timesteps = timesteps[self.rolling_window - 1 :]
+            plt.plot(
+                rolling_timesteps,
+                rolling,
+                linewidth=2,
+                label=f"Rolling mean ({self.rolling_window} episodes)",
+            )
+
+        plt.xlabel("Training timesteps")
+        plt.ylabel("Episode reward")
+        plt.title("Training reward curve")
+        plt.grid(True, alpha=0.3)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(self.plot_path, dpi=150)
+        plt.close()
+
+        if self.verbose > 0:
+            print(f"Updated reward curve: {self.plot_path}")
