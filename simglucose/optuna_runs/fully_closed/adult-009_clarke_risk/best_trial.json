@@ -1,0 +1,20 @@
+{
+  "best_value": 338.4466857910156,
+  "best_trial_number": 1,
+  "best_params": {
+    "n_steps": 960,
+    "batch_size": 480,
+    "net_arch": "128,128,64",
+    "ent_coef": 0.001,
+    "n_epochs": 10,
+    "learning_rate": 0.0038654143643235997,
+    "gamma": 0.9985899463448551,
+    "gae_lambda": 0.9176769671575575,
+    "clip_range": 0.20372969859116152,
+    "vf_coef": 0.7605242648455133,
+    "max_grad_norm": 0.9253637007859234
+  },
+  "best_user_attrs": {
+    "best_mean_reward": 338.4466857910156
+  }
+}

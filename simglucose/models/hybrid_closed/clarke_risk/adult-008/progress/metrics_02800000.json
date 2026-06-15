@@ -1,0 +1,20 @@
+{
+  "timesteps": 2800000,
+  "episode_steps": 480,
+  "mean_cgm": 122.1890869140625,
+  "mean_action": -0.6075365543365479,
+  "mean_insulin": 0.033979497849941254,
+  "mean_proposed_insulin": 0.033979497849941254,
+  "mean_shielded_insulin": 0.033979497849941254,
+  "total_insulin": 16.31015968322754,
+  "total_proposed_insulin": 16.31015968322754,
+  "total_shielded_insulin": 16.31015968322754,
+  "mean_iob": 0.6652411818504333,
+  "pct_tir_70_180": 98.75,
+  "pct_above_250": 0.0,
+  "pct_below_70": 0.0,
+  "pct_shield_active": 0.0,
+  "shield_count": 0,
+  "total_reward": 466.61798095703125,
+  "mean_reward": 0.9721208214759827
+}

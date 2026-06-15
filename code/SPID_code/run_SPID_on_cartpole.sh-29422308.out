@@ -1,0 +1,278 @@
+======================================
+Starting SPID CartPole experiment
+Date: Wed Mar 18 08:54:55 PM CET 2026
+Host: cn-1055
+Working dir: /home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code
+======================================
+Working dir: /home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code
+Host: cn-1055
+SLURM job: 29422308
+run SPID Working dir is: /faststorage/project/GGSpeciale/ashc_repo/GGSpeciale/code
+
+================================================================================
+Running teacher: DDPG_cartpole.zip
+================================================================================
+finished collecting trajectories
+computing advantages
+Successfully computed Q-based advantages for ddpg on cpu
+ready to train
+about to evaluate
+Iteration 0: student reward = 37.8500 +/- 8.3443
+finished collecting trajectories
+computing advantages
+Successfully computed Q-based advantages for ddpg on cpu
+ready to train
+about to evaluate
+Iteration 1: student reward = 39.4000 +/- 7.6394
+finished collecting trajectories
+computing advantages
+Successfully computed Q-based advantages for ddpg on cpu
+ready to train
+about to evaluate
+Iteration 2: student reward = 37.2800 +/- 8.4060
+finished collecting trajectories
+computing advantages
+Successfully computed Q-based advantages for ddpg on cpu
+ready to train
+about to evaluate
+Iteration 3: student reward = 10.6500 +/- 0.5362
+finished collecting trajectories
+computing advantages
+Successfully computed Q-based advantages for ddpg on cpu
+ready to train
+about to evaluate
+Iteration 4: student reward = 33.9300 +/- 11.2812
+SPID iteration complete. Dataset size: 3
+Best policy iteration: 1
+Best student reward during search: 39.4000
+Teacher eval: 500.0000 +/- 0.0000
+Student eval: 40.0900 +/- 8.2403
+Saved results to: /home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_GMDAgger_models/DDPG_cartpole
+Ain't been done
+PySRRegressor.equations_ = [
+	   pick     score  ...      loss  complexity
+	0        0.000000  ...  0.747667           1
+	1        0.030501  ...  0.703422           3
+	2        0.029863  ...  0.662639           5
+	3  >>>>  0.210178  ...  0.435230           7
+	4        0.029841  ...  0.410015           9
+	5        0.000362  ...  0.409718          11
+	
+	[6 rows x 5 columns]
+]
+Finished DDPG_cartpole.zip
+Saved outputs to: /home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_GMDAgger_models/DDPG_cartpole
+
+================================================================================
+Running teacher: PPO_cartpole.zip
+================================================================================
+finished collecting trajectories
+computing advantages
+ready to train
+about to evaluate
+Iteration 0: student reward = 72.7200 +/- 33.2319
+finished collecting trajectories
+computing advantages
+ready to train
+about to evaluate
+Iteration 1: student reward = 340.3600 +/- 65.9464
+finished collecting trajectories
+computing advantages
+ready to train
+about to evaluate
+Iteration 2: student reward = 372.1200 +/- 67.0041
+finished collecting trajectories
+computing advantages
+ready to train
+about to evaluate
+Iteration 3: student reward = 319.6200 +/- 54.6635
+finished collecting trajectories
+computing advantages
+ready to train
+about to evaluate
+Iteration 4: student reward = 500.0000 +/- 0.0000
+SPID iteration complete. Dataset size: 3
+Best policy iteration: 4
+Best student reward during search: 500.0000
+Teacher eval: 476.8300 +/- 32.1537
+Student eval: 500.0000 +/- 0.0000
+Saved results to: /home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_GMDAgger_models/PPO_cartpole
+Ain't been done
+PySRRegressor.equations_ = [
+	   pick     score  ...      loss  complexity
+	0        0.000000  ...  0.010253           1
+	1        0.196157  ...  0.006926           3
+	2        0.285933  ...  0.003909           5
+	3        0.312068  ...  0.002094           7
+	4        0.442979  ...  0.000864           9
+	5  >>>>  0.963177  ...  0.000126          11
+	
+	[6 rows x 5 columns]
+]
+Finished PPO_cartpole.zip
+Saved outputs to: /home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_GMDAgger_models/PPO_cartpole
+
+================================================================================
+Running teacher: SAC_cartpole.zip
+================================================================================
+finished collecting trajectories
+computing advantages
+Successfully computed Q-based advantages for sac on cpu
+ready to train
+about to evaluate
+Iteration 0: student reward = 207.1600 +/- 23.7856
+finished collecting trajectories
+computing advantages
+Successfully computed Q-based advantages for sac on cpu
+ready to train
+about to evaluate
+Iteration 1: student reward = 359.8200 +/- 57.0786
+finished collecting trajectories
+computing advantages
+Successfully computed Q-based advantages for sac on cpu
+ready to train
+about to evaluate
+Iteration 2: student reward = 500.0000 +/- 0.0000
+finished collecting trajectories
+computing advantages
+Successfully computed Q-based advantages for sac on cpu
+ready to train
+about to evaluate
+Iteration 3: student reward = 377.7300 +/- 23.5473
+finished collecting trajectories
+computing advantages
+Successfully computed Q-based advantages for sac on cpu
+ready to train
+about to evaluate
+Iteration 4: student reward = 373.5600 +/- 23.5929
+SPID iteration complete. Dataset size: 3
+Best policy iteration: 2
+Best student reward during search: 500.0000
+Teacher eval: 500.0000 +/- 0.0000
+Student eval: 500.0000 +/- 0.0000
+Saved results to: /home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_GMDAgger_models/SAC_cartpole
+Ain't been done
+PySRRegressor.equations_ = [
+	   pick     score  ...      loss  complexity
+	0        0.000000  ...  0.167445           1
+	1        0.262367  ...  0.099080           3
+	2        0.374873  ...  0.046814           5
+	3  >>>>  0.232412  ...  0.029411           7
+	4        0.118840  ...  0.023189           9
+	5        0.050641  ...  0.020955          11
+	
+	[6 rows x 5 columns]
+]
+Finished SAC_cartpole.zip
+Saved outputs to: /home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_GMDAgger_models/SAC_cartpole
+
+================================================================================
+Running teacher: TD3_cartpole.zip
+================================================================================
+finished collecting trajectories
+computing advantages
+Successfully computed Q-based advantages for td3 on cpu
+ready to train
+about to evaluate
+Iteration 0: student reward = 15.0900 +/- 11.7056
+finished collecting trajectories
+computing advantages
+Successfully computed Q-based advantages for td3 on cpu
+ready to train
+about to evaluate
+Iteration 1: student reward = 23.3200 +/- 5.5442
+finished collecting trajectories
+computing advantages
+Successfully computed Q-based advantages for td3 on cpu
+ready to train
+about to evaluate
+Iteration 2: student reward = 23.8100 +/- 6.4849
+finished collecting trajectories
+computing advantages
+Successfully computed Q-based advantages for td3 on cpu
+ready to train
+about to evaluate
+Iteration 3: student reward = 34.0500 +/- 13.2404
+finished collecting trajectories
+computing advantages
+Successfully computed Q-based advantages for td3 on cpu
+ready to train
+about to evaluate
+Iteration 4: student reward = 19.1200 +/- 3.0831
+SPID iteration complete. Dataset size: 3
+Best policy iteration: 3
+Best student reward during search: 34.0500
+Teacher eval: 500.0000 +/- 0.0000
+Student eval: 33.7500 +/- 14.7325
+Saved results to: /home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_GMDAgger_models/TD3_cartpole
+Ain't been done
+PySRRegressor.equations_ = [
+	   pick     score  ...      loss  complexity
+	0        0.000000  ...  0.174554           1
+	1        0.081239  ...  0.148377           3
+	2        0.021773  ...  0.142054           5
+	3        0.019524  ...  0.136614           7
+	4  >>>>  0.102307  ...  0.111335           9
+	5        0.068871  ...  0.097009          11
+	
+	[6 rows x 5 columns]
+]
+Finished TD3_cartpole.zip
+Saved outputs to: /home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_GMDAgger_models/TD3_cartpole
+
+================================================================================
+Running teacher: TRPO_cartpole.zip
+================================================================================
+finished collecting trajectories
+computing advantages
+ready to train
+about to evaluate
+Iteration 0: student reward = 228.6600 +/- 21.8345
+finished collecting trajectories
+computing advantages
+ready to train
+about to evaluate
+Iteration 1: student reward = 308.3700 +/- 83.5497
+finished collecting trajectories
+computing advantages
+ready to train
+about to evaluate
+Iteration 2: student reward = 274.0700 +/- 45.6824
+finished collecting trajectories
+computing advantages
+ready to train
+about to evaluate
+Iteration 3: student reward = 500.0000 +/- 0.0000
+finished collecting trajectories
+computing advantages
+ready to train
+about to evaluate
+Iteration 4: student reward = 500.0000 +/- 0.0000
+SPID iteration complete. Dataset size: 3
+Best policy iteration: 3
+Best student reward during search: 500.0000
+Teacher eval: 500.0000 +/- 0.0000
+Student eval: 500.0000 +/- 0.0000
+Saved results to: /home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_GMDAgger_models/TRPO_cartpole
+Ain't been done
+PySRRegressor.equations_ = [
+	   pick     score  ...      loss  complexity
+	0        0.000000  ...  0.003545           1
+	1        0.147501  ...  0.002640           3
+	2        0.106868  ...  0.002132           5
+	3        0.247242  ...  0.001300           7
+	4  >>>>  0.580017  ...  0.000408           9
+	
+	[5 rows x 5 columns]
+]
+Finished TRPO_cartpole.zip
+Saved outputs to: /home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_GMDAgger_models/TRPO_cartpole
+
+================================================================================
+All runs complete.
+Combined summary saved to: /home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_GMDAgger_models/all_runs_summary.json
+================================================================================
+======================================
+Finished run
+Date: Wed Mar 18 09:33:02 PM CET 2026
+======================================

@@ -1,0 +1,12 @@
+{
+  "best_student_iteration": 9,
+  "dataset_size": 3,
+  "teacher": {
+    "mean_reward": 93.99614613999998,
+    "std_reward": 1.1766860216909947
+  },
+  "student": {
+    "mean_reward": 89.54094467,
+    "std_reward": 3.108272987118107
+  }
+}

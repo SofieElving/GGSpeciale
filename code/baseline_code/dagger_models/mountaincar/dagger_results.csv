@@ -1,0 +1,2 @@
+teacher_algo,teacher_file,dagger_timesteps,mean_reward,std_reward,saved_student
+PPO,PPO_mountaincar.zip,5000,93.5421767,1.1767434382859385,/Users/elisalaegsgaard/Desktop/Speciale/GGSpeciale/code/baseline_code/dagger_models/mountaincar/DAgger_PPO_mountaincar

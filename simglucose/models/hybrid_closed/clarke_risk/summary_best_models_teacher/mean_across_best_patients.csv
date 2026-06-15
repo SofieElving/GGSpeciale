@@ -1,0 +1,2 @@
+best_mode,n_patients,TBR_II,TBR_I,TIR,TAR_I,TAR_II,total_daily_insulin,average_insulin,TBR_II_episode_mean,TBR_I_episode_mean,TIR_episode_mean,TAR_I_episode_mean,TAR_II_episode_mean,total_daily_insulin_episode_mean,average_insulin_episode_mean,critical_failure_rate,mean_reward
+reward,10,0.7875610234016615,5.118202812129967,85.19118439165723,9.690612796212791,0.3831829101852132,0.0,,0.7875840427055225,5.118240346296361,85.19110807498645,9.690651578717205,0.3831921608665333,0.0,,21.43333333333333,403.0141914176941

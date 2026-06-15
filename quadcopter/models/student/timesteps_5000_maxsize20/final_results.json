@@ -1,0 +1,136 @@
+{
+  "best_student_iteration": 7,
+  "dataset_size": 3,
+  "teacher": {
+    "mean_reward": 474.13203100000004,
+    "std_reward": 5.684341886080802e-14
+  },
+  "student": {
+    "mean_reward": 474.42858172000007,
+    "std_reward": 0.000146462150745599
+  },
+  "loss_components": [
+    {
+      "iteration": 0,
+      "mean_fidelity": 0.0,
+      "mean_perf_gap": 0.11733835190534592,
+      "mean_gm_loss": 0.0
+    },
+    {
+      "iteration": 1,
+      "mean_fidelity": 0.004435408394783735,
+      "mean_perf_gap": 0.12072519212961197,
+      "mean_gm_loss": 0.023140128146437743
+    },
+    {
+      "iteration": 2,
+      "mean_fidelity": 0.013619749806821346,
+      "mean_perf_gap": 0.12141864001750946,
+      "mean_gm_loss": 0.040665605847238835
+    },
+    {
+      "iteration": 3,
+      "mean_fidelity": 0.009600193239748478,
+      "mean_perf_gap": 0.11657232791185379,
+      "mean_gm_loss": 0.03345320424654597
+    },
+    {
+      "iteration": 4,
+      "mean_fidelity": 0.007885987870395184,
+      "mean_perf_gap": 0.12219079583883286,
+      "mean_gm_loss": 0.031041828777618276
+    },
+    {
+      "iteration": 5,
+      "mean_fidelity": 0.01152697391808033,
+      "mean_perf_gap": 0.11915674060583115,
+      "mean_gm_loss": 0.037060985431136055
+    },
+    {
+      "iteration": 6,
+      "mean_fidelity": 0.00923745147883892,
+      "mean_perf_gap": 0.12568624317646027,
+      "mean_gm_loss": 0.03407375196393994
+    },
+    {
+      "iteration": 7,
+      "mean_fidelity": 0.01039708498865366,
+      "mean_perf_gap": 0.11831127852201462,
+      "mean_gm_loss": 0.03507267337842469
+    },
+    {
+      "iteration": 8,
+      "mean_fidelity": 0.007557717617601156,
+      "mean_perf_gap": 0.11930404603481293,
+      "mean_gm_loss": 0.030027758667080115
+    },
+    {
+      "iteration": 9,
+      "mean_fidelity": 0.00362287275493145,
+      "mean_perf_gap": 0.11629034578800201,
+      "mean_gm_loss": 0.020525718633385526
+    }
+  ],
+  "loss_components_eval": [
+    {
+      "iteration": 0,
+      "mean_fidelity": 0.0035777748562395573,
+      "mean_perf_gap": 1.0000535249710083,
+      "mean_gm_loss": 0.059816104491474634
+    },
+    {
+      "iteration": 1,
+      "mean_fidelity": 0.00861735176295042,
+      "mean_perf_gap": 1.000119924545288,
+      "mean_gm_loss": 0.09283525836093838
+    },
+    {
+      "iteration": 2,
+      "mean_fidelity": 0.015330449678003788,
+      "mean_perf_gap": 1.0001925230026245,
+      "mean_gm_loss": 0.12382811127610475
+    },
+    {
+      "iteration": 3,
+      "mean_fidelity": 0.01195553783327341,
+      "mean_perf_gap": 1.0002117156982422,
+      "mean_gm_loss": 0.10935295610230956
+    },
+    {
+      "iteration": 4,
+      "mean_fidelity": 0.01416879240423441,
+      "mean_perf_gap": 1.0002425909042358,
+      "mean_gm_loss": 0.1190471739454393
+    },
+    {
+      "iteration": 5,
+      "mean_fidelity": 0.012968112714588642,
+      "mean_perf_gap": 1.0001829862594604,
+      "mean_gm_loss": 0.11388804020188663
+    },
+    {
+      "iteration": 6,
+      "mean_fidelity": 0.016651391983032227,
+      "mean_perf_gap": 1.0003243684768677,
+      "mean_gm_loss": 0.12906119931911175
+    },
+    {
+      "iteration": 7,
+      "mean_fidelity": 0.018602680414915085,
+      "mean_perf_gap": 1.0002284049987793,
+      "mean_gm_loss": 0.13640721887096938
+    },
+    {
+      "iteration": 8,
+      "mean_fidelity": 0.013555106706917286,
+      "mean_perf_gap": 1.0002455711364746,
+      "mean_gm_loss": 0.11644069499052442
+    },
+    {
+      "iteration": 9,
+      "mean_fidelity": 0.019047893583774567,
+      "mean_perf_gap": 1.0002236366271973,
+      "mean_gm_loss": 0.13802953810851812
+    }
+  ]
+}

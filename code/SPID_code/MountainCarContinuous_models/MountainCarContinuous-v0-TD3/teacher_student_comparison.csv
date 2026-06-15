@@ -1,0 +1,3 @@
+policy,mean_reward,std_reward
+teacher,93.486384,0.08006499891962654
+student_best,94.2747739,0.5562812138870858

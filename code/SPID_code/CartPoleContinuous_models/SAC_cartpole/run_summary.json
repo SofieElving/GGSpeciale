@@ -1,0 +1,10 @@
+{
+  "teacher": "SAC_cartpole.zip",
+  "algorithm": "SAC",
+  "status": "success",
+  "teacher_path": "/home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/baseline_code/baseline_models/cartpole/SAC_cartpole.zip",
+  "run_dir": "/home/ashc/GGSpeciale/ashc_repo/GGSpeciale/code/SPID_code/cartpole_GMDAgger_models/SAC_cartpole",
+  "best_reward_during_search": 500.0,
+  "best_iteration": 2,
+  "n_rewards_logged": 5
+}

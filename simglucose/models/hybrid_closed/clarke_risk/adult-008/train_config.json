@@ -1,0 +1,58 @@
+{
+  "patient": "adult#008",
+  "reward_type": "clarke_risk",
+  "meals": [
+    [
+      420,
+      45.0
+    ],
+    [
+      720,
+      70.0
+    ],
+    [
+      960,
+      15.0
+    ],
+    [
+      1080,
+      80.0
+    ],
+    [
+      1380,
+      10.0
+    ]
+  ],
+  "scenario_mode": "semi_random_hb",
+  "env_name": "env_open",
+  "time_std_multiplier": 0.5,
+  "include_snacks": true,
+  "amount_noise_std_fraction": 0.1,
+  "actual_time_noise_std_min": 5.0,
+  "actual_time_noise_clip_min": 15.0,
+  "timesteps": 4000000,
+  "seed": null,
+  "max_episode_steps": 480,
+  "outdir": "./models/open_optuna_optimal/clarke_risk/adult-008",
+  "learning_rate": 0.0004,
+  "n_steps": 1920,
+  "batch_size": 160,
+  "n_epochs": 10,
+  "gamma": 0.99,
+  "gae_lambda": 0.9,
+  "clip_range": 0.2,
+  "ent_coef": 0.005,
+  "vf_coef": 0.7,
+  "max_grad_norm": 0.8,
+  "net_arch": [
+    128,
+    128,
+    64
+  ],
+  "warning_window_min": 20.0,
+  "insulin_tau_min": 55.0,
+  "sample_time_min": 3.0,
+  "max_insulin_action": 5.0,
+  "shield_bg_threshold": 10.0,
+  "use_bb_warmup": true
+}
